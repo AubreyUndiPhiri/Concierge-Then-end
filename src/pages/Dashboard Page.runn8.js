@@ -56,21 +56,29 @@ $w.onReady(function () {
         if (d.type === "filter") {
             currentDept = d.department;
             loadOrders(currentDept);
-            // Fetch availability specific to the selected department
             fetchAvailability(currentDept);
+            
+            // NEW: If switching to Activities, also load the specific USD pricing list
+            if (currentDept === "Activities") {
+                const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
+                if (priceData.items.length > 0) {
+                    dashboard.postMessage({ 
+                        type: "loadActivityPrices", 
+                        text: priceData.items[0].unavailableText 
+                    });
+                }
+            }
         }
 
-        // AI KNOWLEDGE UPDATE: Handshake & Custom Alert for all Departments
+        // AI KNOWLEDGE UPDATE: General Availability
         if (d.type === "saveAvailability") {
             const staffName = loggedInStaff ? (loggedInStaff.firstName || loggedInStaff.name || "Staff") : "Staff";
             const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             
-            // Map UI department to database title (e.g., "Spa" -> "SpaAvailability")
             const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
             
             await saveLodgeSettings(settingsTitle, d.text, staffName);
             
-            // Send Confirmation back to UI to reset "Unsaved Changes" state
             dashboard.postMessage({ 
                 type: "saveConfirmed", 
                 text: d.text,
@@ -78,7 +86,6 @@ $w.onReady(function () {
                 updatedAt: timeStr
             });
 
-            // Trigger visual success modal in HTML
             dashboard.postMessage({ 
                 type: "alert", 
                 msg: `AI ${currentDept} Knowledge Updated Successfully` 
@@ -87,13 +94,23 @@ $w.onReady(function () {
             fetchAvailability(currentDept); 
         }
 
+        // NEW: AI PRICE UPDATE (Specifically for Activities in USD)
+        if (d.type === "saveActivityPrices") {
+            const staffName = loggedInStaff ? (loggedInStaff.name || "Staff") : "Staff";
+            await saveLodgeSettings("ActivitiesPrices", d.text, staffName);
+            
+            dashboard.postMessage({ 
+                type: "alert", 
+                msg: "AI Activity Prices Updated (USD $)" 
+            });
+        }
+
         // ORDER FULFILLMENT: Set order to 'Ready'
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
                 
-                // Notify the guest via ChatHistory
                 await wixData.insert("ChatHistory", {
                     userMessage: "[SYSTEM_ACTION: NOTIFY_READY]",
                     aiResponse: `Mwaiseni! Your ${d.dept} request is now ready.`,
@@ -117,7 +134,6 @@ function setupDashboard(user) {
         currentDept = formattedUser.roles[0];
         loadOrders(currentDept);
         
-        // REFRESH ENGINE: Updates the board every 10 seconds
         if (refreshInterval) clearInterval(refreshInterval);
         refreshInterval = setInterval(() => loadOrders(currentDept), 10000);
         
@@ -163,8 +179,7 @@ async function fetchAvailability(department) {
     if (results.items.length > 0) {
         const item = results.items[0];
         
-        // Reset availability if it was updated on a previous day (Daily logic)
-        if (item._updatedDate && !isToday(new Date(item._updatedDate))) {
+        if (item._updatedDate && !isToday(new Date(item._updatedDate)) && department === "Kitchen") {
             await saveLodgeSettings(settingsTitle, "", "System Reset");
             dashboard.postMessage({ type: "loadAvailability", text: "", updatedBy: "System", updatedAt: "Midnight" });
         } else {
@@ -177,7 +192,6 @@ async function fetchAvailability(department) {
             });
         }
     } else {
-        // Clear if no record exists
         dashboard.postMessage({ type: "loadAvailability", text: "", updatedBy: "None", updatedAt: "N/A" });
     }
 }
@@ -193,7 +207,6 @@ async function saveLodgeSettings(title, text, staffName) {
     }
 }
 
-// FORMATTING HELPERS
 function formatUser(user) { 
     return { ...user, roles: user.roles.map(r => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()) }; 
 }
