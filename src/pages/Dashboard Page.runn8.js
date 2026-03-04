@@ -56,15 +56,19 @@ $w.onReady(function () {
         if (d.type === "filter") {
             currentDept = d.department;
             loadOrders(currentDept);
-            if (currentDept === "Kitchen") fetchAvailability();
+            // Fetch availability specific to the selected department
+            fetchAvailability(currentDept);
         }
 
-        // AI MENU UPDATE: Handshake & Custom Alert
+        // AI KNOWLEDGE UPDATE: Handshake & Custom Alert for all Departments
         if (d.type === "saveAvailability") {
             const staffName = loggedInStaff ? (loggedInStaff.firstName || loggedInStaff.name || "Staff") : "Staff";
             const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             
-            await saveLodgeSettings("DailyAvailability", d.text, staffName);
+            // Map UI department to database title (e.g., "Spa" -> "SpaAvailability")
+            const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
+            
+            await saveLodgeSettings(settingsTitle, d.text, staffName);
             
             // Send Confirmation back to UI to reset "Unsaved Changes" state
             dashboard.postMessage({ 
@@ -77,10 +81,10 @@ $w.onReady(function () {
             // Trigger visual success modal in HTML
             dashboard.postMessage({ 
                 type: "alert", 
-                msg: "AI Menu Knowledge Updated Successfully" 
+                msg: `AI ${currentDept} Knowledge Updated Successfully` 
             });
             
-            fetchAvailability(); 
+            fetchAvailability(currentDept); 
         }
 
         // ORDER FULFILLMENT: Set order to 'Ready'
@@ -89,7 +93,7 @@ $w.onReady(function () {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
                 
-                // Optional: Insert into ChatHistory to notify the guest
+                // Notify the guest via ChatHistory
                 await wixData.insert("ChatHistory", {
                     userMessage: "[SYSTEM_ACTION: NOTIFY_READY]",
                     aiResponse: `Mwaiseni! Your ${d.dept} request is now ready.`,
@@ -116,8 +120,9 @@ function setupDashboard(user) {
         // REFRESH ENGINE: Updates the board every 10 seconds
         if (refreshInterval) clearInterval(refreshInterval);
         refreshInterval = setInterval(() => loadOrders(currentDept), 10000);
+        
+        fetchAvailability(currentDept);
     }
-    fetchAvailability();
 }
 
 async function loadOrders(department) {
@@ -125,54 +130,67 @@ async function loadOrders(department) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const active = await wixData.query("PendingRequests")
-        .eq("requestType", department)
-        .eq("isPrinted", false)
-        .ge("_createdDate", today)
-        .descending("_createdDate")
-        .find();
+    try {
+        const active = await wixData.query("PendingRequests")
+            .eq("requestType", department)
+            .eq("isPrinted", false)
+            .ge("_createdDate", today)
+            .descending("_createdDate")
+            .find();
 
-    const history = await wixData.query("PendingRequests")
-        .eq("requestType", department)
-        .eq("isPrinted", true)
-        .limit(20)
-        .descending("_createdDate")
-        .find();
+        const history = await wixData.query("PendingRequests")
+            .eq("requestType", department)
+            .eq("isPrinted", true)
+            .limit(20)
+            .descending("_createdDate")
+            .find();
 
-    dashboard.postMessage({ 
-        type: "updateOrders", 
-        dept: department, 
-        orders: active.items, 
-        history: history.items 
-    });
+        dashboard.postMessage({ 
+            type: "updateOrders", 
+            dept: department, 
+            orders: active.items, 
+            history: history.items 
+        });
+    } catch (err) {
+        console.error("Failed to load orders", err);
+    }
 }
 
-async function fetchAvailability() {
-    const results = await wixData.query("LodgeSettings").eq("title", "DailyAvailability").find();
+async function fetchAvailability(department) {
+    const settingsTitle = department === "Kitchen" ? "DailyAvailability" : `${department}Availability`;
+    
+    const results = await wixData.query("LodgeSettings").eq("title", settingsTitle).find();
     if (results.items.length > 0) {
         const item = results.items[0];
         
-        // Reset availability if it was updated on a previous day
+        // Reset availability if it was updated on a previous day (Daily logic)
         if (item._updatedDate && !isToday(new Date(item._updatedDate))) {
-            await saveLodgeSettings("DailyAvailability", "", "System Reset");
+            await saveLodgeSettings(settingsTitle, "", "System Reset");
             dashboard.postMessage({ type: "loadAvailability", text: "", updatedBy: "System", updatedAt: "Midnight" });
         } else {
             const timeStr = new Date(item._updatedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             dashboard.postMessage({ 
                 type: "loadAvailability", 
-                text: item.unavailableText, 
+                text: item.unavailableText || "", 
                 updatedBy: item.lastUpdatedBy || "Staff", 
                 updatedAt: timeStr 
             });
         }
+    } else {
+        // Clear if no record exists
+        dashboard.postMessage({ type: "loadAvailability", text: "", updatedBy: "None", updatedAt: "N/A" });
     }
 }
 
 async function saveLodgeSettings(title, text, staffName) {
-    const results = await wixData.query("LodgeSettings").eq("title", title).find();
-    const toSave = { title, unavailableText: text, lastUpdatedBy: staffName };
-    if (results.items.length > 0) toSave._id = results.items[0]._id;
-    return wixData.save("LodgeSettings", toSave);
+    try {
+        const results = await wixData.query("LodgeSettings").eq("title", title).find();
+        const toSave = { title, unavailableText: text, lastUpdatedBy: staffName };
+        if (results.items.length > 0) toSave._id = results.items[0]._id;
+        return await wixData.save("LodgeSettings", toSave);
+    } catch (err) {
+        console.error("Failed to save lodge settings", err);
+    }
 }
 
 // FORMATTING HELPERS
