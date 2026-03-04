@@ -59,15 +59,24 @@ export const askAI = webMethod(
 
         if (!hfToken) return "The AI concierge is currently offline.";
 
-        let outOfStockInfo = "All items are currently available.";
+        // FETCH ALL AVAILABILITY DATA FOR KITCHEN, SPA, AND ACTIVITIES
+        let availabilityContext = "";
         try {
             const settings = await wixData.query("LodgeSettings")
-                .eq("title", "DailyAvailability")
+                .hasSome("title", ["DailyAvailability", "SpaAvailability", "ActivitiesAvailability"])
                 .find({ suppressAuth: true });
-            if (settings.items.length > 0 && settings.items[0].unavailableText) {
-                outOfStockInfo = `IMPORTANT: The following items are NOT available today: ${settings.items[0].unavailableText}.`;
+            
+            if (settings.items.length > 0) {
+                settings.items.forEach(item => {
+                    if (item.unavailableText) {
+                        const deptName = item.title.replace('Availability', '').replace('Daily', 'Kitchen');
+                        availabilityContext += `- ${deptName}: The following are UNAVAILABLE today: ${item.unavailableText}.\n`;
+                    }
+                });
             }
-        } catch (err) { console.error("Availability check failed:", err); }
+        } catch (err) { 
+            console.error("Multi-department availability check failed:", err); 
+        }
 
         const roomData = {
             "1": { name: "Tonga", greet: "muli buti" },
@@ -127,7 +136,9 @@ CONVERSATIONAL GUIDELINES:
 3. ROOM LIMITATIONS: Do not describe room amenities, features, or views (e.g., beds, decor, or views).
 4. FLOW: Speak naturally and elegantly. Wait for the guest to express interest before providing specific prices or suggestions from the Knowledge Base.
 5. ACCURACY: Once a guest asks for details, use the Knowledge Base for all prices and descriptions. Always bold prices using **K[Amount]**.
-6. AVAILABILITY: ${outOfStockInfo}. If a guest asks for something out of stock, politely apologize and suggest an alternative.
+6. AVAILABILITY STATUS:
+${availabilityContext || "All services, treatments, and menu items are fully available."}
+If a guest asks for an item, treatment, or activity listed as UNAVAILABLE above, you must politely apologize, explain it is not available today, and suggest a similar alternative from the Knowledge Base.
 7. ORDERING & PAYMENT: 
    - If a guest wants to order food, book the spa, or request an activity, inform them that we accept secure card payments. 
    - Inform them: "To finalize your order, I will provide a form for your details. You can then choose to pay securely via card, and I will redirect you to our checkout".
@@ -137,6 +148,7 @@ CONVERSATIONAL GUIDELINES:
 KNOWLEDGE BASE:
 ${lodgeKnowledgeBase}
         `.trim();
+
         try {
             const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
                 method: "POST",
@@ -172,9 +184,9 @@ ${lodgeKnowledgeBase}
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT]")) {
                 const msg = userMessage.toLowerCase();
                 let dept = "Activities";
-                if (msg.includes("steak") || msg.includes("chicken") || msg.includes("bream") || msg.includes("food") || msg.includes("burger") || msg.includes("nshima")) {
+                if (msg.includes("steak") || msg.includes("chicken") || msg.includes("bream") || msg.includes("food") || msg.includes("burger") || msg.includes("nshima") || msg.includes("order")) {
                     dept = "Kitchen";
-                } else if (msg.includes("massage") || msg.includes("spa") || msg.includes("facial") || msg.includes("manicure")) {
+                } else if (msg.includes("massage") || msg.includes("spa") || msg.includes("facial") || msg.includes("manicure") || msg.includes("treatment")) {
                     dept = "Spa";
                 }
                 
