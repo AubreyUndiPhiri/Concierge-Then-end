@@ -8,18 +8,22 @@ let loggedInStaff = null;
 let refreshInterval;
 
 $w.onReady(function () {
-    dashboard = $w("#html1"); // Ensure your HTML component ID matches this
+    dashboard = $w("#html1"); 
 
-    // PERSISTENCE: Check if a staff member is already logged in
+    // PERSISTENCE: Auto-resume session
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) { 
-        loggedInStaff = JSON.parse(savedStaff); 
+        try {
+            loggedInStaff = JSON.parse(savedStaff); 
+        } catch (e) {
+            local.removeItem("staffSession");
+        }
     }
 
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
-        // INITIALIZATION
+        // INITIALIZATION Handshake
         if (d.type === "ready") {
             if (!loggedInStaff) { 
                 dashboard.postMessage({ type: "showLogin" }); 
@@ -48,33 +52,25 @@ $w.onReady(function () {
         if (d.type === "staffLogout") {
             local.removeItem("staffSession");
             loggedInStaff = null;
-            clearInterval(refreshInterval);
+            if (refreshInterval) clearInterval(refreshInterval);
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // FILTERING: Change Department (Kitchen/Spa/Activities)
+        // FILTERING: Department Switch
         if (d.type === "filter") {
             currentDept = d.department;
-            loadOrders(currentDept);
-            fetchAvailability(currentDept);
+            await loadOrders(currentDept);
+            await fetchAvailability(currentDept);
             
-            // NEW: If switching to Activities, also load the specific USD pricing list
+            // Specifically load USD prices for Activities
             if (currentDept === "Activities") {
-                const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
-                if (priceData.items.length > 0) {
-                    dashboard.postMessage({ 
-                        type: "loadActivityPrices", 
-                        text: priceData.items[0].unavailableText 
-                    });
-                }
+                await fetchActivityPrices();
             }
         }
 
-        // AI KNOWLEDGE UPDATE: General Availability
+        // AI KNOWLEDGE UPDATE: General Availability (Text)
         if (d.type === "saveAvailability") {
-            const staffName = loggedInStaff ? (loggedInStaff.firstName || loggedInStaff.name || "Staff") : "Staff";
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            
+            const staffName = getStaffName();
             const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
             
             await saveLodgeSettings(settingsTitle, d.text, staffName);
@@ -83,34 +79,27 @@ $w.onReady(function () {
                 type: "saveConfirmed", 
                 text: d.text,
                 updatedBy: staffName,
-                updatedAt: timeStr
+                updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             });
 
-            dashboard.postMessage({ 
-                type: "alert", 
-                msg: `AI ${currentDept} Knowledge Updated Successfully` 
-            });
-            
-            fetchAvailability(currentDept); 
+            dashboard.postMessage({ type: "alert", msg: `AI ${currentDept} Availability Synced` });
+            await fetchAvailability(currentDept); 
         }
 
-        // NEW: AI PRICE UPDATE (Specifically for Activities in USD)
+        // AI PRICE UPDATE: USD Prices for Activities
         if (d.type === "saveActivityPrices") {
-            const staffName = loggedInStaff ? (loggedInStaff.name || "Staff") : "Staff";
+            const staffName = getStaffName();
             await saveLodgeSettings("ActivitiesPrices", d.text, staffName);
-            
-            dashboard.postMessage({ 
-                type: "alert", 
-                msg: "AI Activity Prices Updated (USD $)" 
-            });
+            dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated (USD $)" });
         }
 
-        // ORDER FULFILLMENT: Set order to 'Ready'
+        // ORDER FULFILLMENT
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
                 
+                // Real-time Guest Notification
                 await wixData.insert("ChatHistory", {
                     userMessage: "[SYSTEM_ACTION: NOTIFY_READY]",
                     aiResponse: `Mwaiseni! Your ${d.dept} request is now ready.`,
@@ -118,26 +107,33 @@ $w.onReady(function () {
                     timestamp: new Date()
                 }, { suppressAuth: true });
 
-                loadOrders(currentDept);
+                await loadOrders(currentDept);
             } catch (err) {
-                console.error("Notify Ready failed", err);
+                console.error("Fulfillment failed:", err);
             }
         }
     });
 });
 
-function setupDashboard(user) {
+/** * HELPER FUNCTIONS 
+ */
+
+function getStaffName() {
+    return loggedInStaff ? (loggedInStaff.firstName || loggedInStaff.name || "Staff") : "Staff";
+}
+
+async function setupDashboard(user) {
     const formattedUser = formatUser(user);
     dashboard.postMessage({ type: "setUser", user: formattedUser });
     
     if (formattedUser.roles && formattedUser.roles.length > 0) {
         currentDept = formattedUser.roles[0];
-        loadOrders(currentDept);
-        
+        await loadOrders(currentDept);
+        await fetchAvailability(currentDept);
+        if (currentDept === "Activities") await fetchActivityPrices();
+
         if (refreshInterval) clearInterval(refreshInterval);
         refreshInterval = setInterval(() => loadOrders(currentDept), 10000);
-        
-        fetchAvailability(currentDept);
     }
 }
 
@@ -147,19 +143,12 @@ async function loadOrders(department) {
     today.setHours(0, 0, 0, 0);
 
     try {
-        const active = await wixData.query("PendingRequests")
-            .eq("requestType", department)
-            .eq("isPrinted", false)
-            .ge("_createdDate", today)
-            .descending("_createdDate")
-            .find();
-
-        const history = await wixData.query("PendingRequests")
-            .eq("requestType", department)
-            .eq("isPrinted", true)
-            .limit(20)
-            .descending("_createdDate")
-            .find();
+        const query = wixData.query("PendingRequests").eq("requestType", department).ge("_createdDate", today);
+        
+        const [active, history] = await Promise.all([
+            query.eq("isPrinted", false).descending("_createdDate").find(),
+            query.eq("isPrinted", true).limit(20).descending("_createdDate").find()
+        ]);
 
         dashboard.postMessage({ 
             type: "updateOrders", 
@@ -168,31 +157,38 @@ async function loadOrders(department) {
             history: history.items 
         });
     } catch (err) {
-        console.error("Failed to load orders", err);
+        console.error("Order load error:", err);
     }
 }
 
 async function fetchAvailability(department) {
     const settingsTitle = department === "Kitchen" ? "DailyAvailability" : `${department}Availability`;
-    
     const results = await wixData.query("LodgeSettings").eq("title", settingsTitle).find();
+    
     if (results.items.length > 0) {
         const item = results.items[0];
-        
-        if (item._updatedDate && !isToday(new Date(item._updatedDate)) && department === "Kitchen") {
+        // Automatic daily reset for Kitchen
+        if (department === "Kitchen" && item._updatedDate && !isToday(new Date(item._updatedDate))) {
             await saveLodgeSettings(settingsTitle, "", "System Reset");
             dashboard.postMessage({ type: "loadAvailability", text: "", updatedBy: "System", updatedAt: "Midnight" });
         } else {
-            const timeStr = new Date(item._updatedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             dashboard.postMessage({ 
                 type: "loadAvailability", 
                 text: item.unavailableText || "", 
                 updatedBy: item.lastUpdatedBy || "Staff", 
-                updatedAt: timeStr 
+                updatedAt: new Date(item._updatedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             });
         }
-    } else {
-        dashboard.postMessage({ type: "loadAvailability", text: "", updatedBy: "None", updatedAt: "N/A" });
+    }
+}
+
+async function fetchActivityPrices() {
+    const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
+    if (priceData.items.length > 0) {
+        dashboard.postMessage({ 
+            type: "loadActivityPrices", 
+            text: priceData.items[0].unavailableText 
+        });
     }
 }
 
@@ -203,7 +199,7 @@ async function saveLodgeSettings(title, text, staffName) {
         if (results.items.length > 0) toSave._id = results.items[0]._id;
         return await wixData.save("LodgeSettings", toSave);
     } catch (err) {
-        console.error("Failed to save lodge settings", err);
+        console.error("Settings save error:", err);
     }
 }
 
@@ -213,7 +209,5 @@ function formatUser(user) {
 
 function isToday(date) { 
     const today = new Date(); 
-    return date.getDate() === today.getDate() && 
-           date.getMonth() === today.getMonth() && 
-           date.getFullYear() === today.getFullYear(); 
+    return date.toDateString() === today.toDateString();
 }
