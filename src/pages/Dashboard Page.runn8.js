@@ -5,8 +5,9 @@ import {
     enrollStaff, 
     getAdminKPIs, 
     getAllStaff, 
-    updateStaffRoles 
-} from 'backend/staffManager.web.js'; // Ensure these 4 are in your backend file
+    updateStaffRoles,
+    saveDriverInfo // Ensure this matches your backend file
+} from 'backend/staffManager.web.js'; 
 
 let dashboard; 
 let currentDept = "";
@@ -61,10 +62,23 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // 3. SETTINGS GEAR: STAFF MANAGEMENT (The "Handshake")
+        // 3. SETTINGS: STAFF & DRIVER MANAGEMENT
         if (d.type === "getStaffList") {
             const list = await getAllStaff();
             dashboard.postMessage({ type: "staffListUpdate", payload: list.items });
+        }
+
+        if (d.type === "getDriverList") {
+            const driverData = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
+            dashboard.postMessage({ 
+                type: "loadDrivers", 
+                text: driverData.items.length > 0 ? driverData.items[0].unavailableText : "" 
+            });
+        }
+
+        if (d.type === "saveDrivers") {
+            await saveDriverInfo(d.text);
+            dashboard.postMessage({ type: "alert", msg: "AI Driver Context Updated!" });
         }
 
         if (d.type === "updateStaffRoles") {
@@ -81,7 +95,6 @@ $w.onReady(function () {
             try {
                 await enrollStaff(d.staffData);
                 dashboard.postMessage({ type: "alert", msg: "New Staff Enrolled Successfully" });
-                // Refresh list if settings is open
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items });
             } catch (err) {
