@@ -14,7 +14,7 @@ async function createPendingRequest(roomNumber, roomName, department, details, g
         roomName: roomName,
         requestType: department,
         details: details,
-        fullContext: guestMsg,
+        fullContext: guestMsg, // Captures original guest message for staff context
         status: "Pending Verification",
         timestamp: new Date(),
         isPrinted: false
@@ -59,7 +59,7 @@ export const askAI = webMethod(
 
         if (!hfToken) return "The AI concierge is currently offline.";
 
-        // 1. FETCH AVAILABILITY AND PRICE UPDATES
+        // 1. FETCH AVAILABILITY AND PRICE UPDATES FROM DATABASE
         let availabilityContext = "";
         let priceContext = "";
 
@@ -82,6 +82,7 @@ export const askAI = webMethod(
             console.error("Database sync failed:", err); 
         }
 
+        // 2. DEFINE ROOM GREETING DATA (ZAMBIAN TRADITION)
         const roomData = {
             "1": { name: "Tonga", greet: "muli buti" },
             "2": { name: "Tumbuka", greet: "Muli uli" },
@@ -100,14 +101,14 @@ export const askAI = webMethod(
 
         const lodgeKnowledgeBase = `
 PROPERTY: NKHOSI LIVINGSTONE LODGE & SPA.
-IDENTITY: Eco-friendly, solar-powered luxury eco-resort in Mukuni Village, Livingstone, Zambia.
+LOCATION: Eco-friendly, solar-powered luxury eco-resort in Mukuni Village, Livingstone, Zambia.
 
 I. SPA & WELLNESS:
 - Massages: Full Body (**K1300**/60m), Deep Tissue (**K1300**/60m), Hot Stone (**K1400**/90m), Ukuchina (Zambian Traditional) (**K1400**/90m), Soul Of Livingstone (**K1400**/90m), Back, Neck & Shoulder (**K950**/30m), Foot Massage (**K750**/20m).
 - Beauty: Manicure (**K750** standard / **K850** gel), Pedicure (**K750** standard / **K850** gel), Gel Overlay (**K700**), Deep Cleansing Facial (**K1550**).
 
 II. DINNER COLLECTION:
-- Main Meals: Village Chicken Stew (**K270**), african Chicken Ifisashi (**K275**), Signature Whole Zambezi Bream (**K245**).
+- Main Meals: Village Chicken Stew (**K270**), African Chicken Ifisashi (**K275**), Signature Whole Zambezi Bream (**K245**).
 
 III. ACTIVITIES:
 - Victoria Falls: Guided Falls Tours, Livingstone Island & Devil’s Pool (Seasonal).
@@ -122,14 +123,14 @@ ${priceContext || "Use standard pricing from Knowledge Base."}
 ${availabilityContext || "All services are available."}
 
 PROTOCOL: 
-- If 'UPDATED ACTIVITY PRICES' is provided above, you MUST use those prices for activities instead of the Knowledge Base.
-- If a guest asks for something marked as UNAVAILABLE, apologize and suggest an alternative.
+- If 'UPDATED ACTIVITY PRICES' is provided above, you MUST prioritize those prices over the Knowledge Base.
+- If a guest asks for something marked as UNAVAILABLE, apologize politely and suggest a similar available alternative.
 
 CONVERSATIONAL GUIDELINES:
 1. GREETING: Start with "${roomInfo.greet}" and welcome them to the **${roomInfo.name}** room. 
-2. FIRST INTERACTION: Keep it brief. Do not list specific menu items or prices immediately.
-3. ACCURACY: Use the Knowledge Base and the 'UPDATED' section above for all prices. Always bold prices using **K[Amount]** or **$[Amount]**.
-4. ORDERING: If they want to order, append: [ACTION:TRIGGER_CHECKOUT].
+2. STYLE: Professional, welcoming, and helpful. Keep responses concise.
+3. ACCURACY: Always bold prices using the currency provided (e.g. **K250** or **$85**).
+4. ORDERING: If they want to order food, book a spa treatment, or book an activity, you MUST append this tag to the end of your message: [ACTION:TRIGGER_CHECKOUT].
 
 KNOWLEDGE BASE:
 ${lodgeKnowledgeBase}
@@ -155,9 +156,9 @@ ${lodgeKnowledgeBase}
             });
 
             const result = await response.json();
-            const aiResponse = result.choices?.[0]?.message?.content?.trim() || "";
+            const aiResponse = result.choices?.[0]?.message?.content?.trim() || "I apologize, mwane. I am having trouble processing that request right now.";
 
-            // LOG TO CHAT HISTORY
+            // LOG TO CHAT HISTORY FOR ADMIN KPIs
             wixData.insert("ChatHistory", {
                 userMessage: userMessage,
                 aiResponse: aiResponse,
@@ -166,15 +167,17 @@ ${lodgeKnowledgeBase}
                 timestamp: new Date()
             }, { suppressAuth: true }).catch(e => console.error("History log failed"));
 
-            // CHECKOUT TRIGGER LOGIC
+            // CHECKOUT TRIGGER LOGIC & DEPARTMENT ROUTING
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT]")) {
                 const msg = userMessage.toLowerCase();
-                let dept = "Activities";
-                if (msg.includes("steak") || msg.includes("chicken") || msg.includes("bream") || msg.includes("food") || msg.includes("burger") || msg.includes("nshima") || msg.includes("order")) {
+                let dept = "Activities"; // Default
+
+                if (msg.includes("steak") || msg.includes("chicken") || msg.includes("bream") || msg.includes("food") || msg.includes("burger") || msg.includes("nshima") || msg.includes("order") || msg.includes("dinner") || msg.includes("lunch")) {
                     dept = "Kitchen";
-                } else if (msg.includes("massage") || msg.includes("spa") || msg.includes("facial") || msg.includes("manicure") || msg.includes("treatment")) {
+                } else if (msg.includes("massage") || msg.includes("spa") || msg.includes("facial") || msg.includes("manicure") || msg.includes("treatment") || msg.includes("pedicure")) {
                     dept = "Spa";
                 }
+                
                 await createPendingRequest(sanitizedRoom, roomInfo.name, dept, "Guest initiating secure checkout", userMessage);
             }
 
@@ -182,7 +185,7 @@ ${lodgeKnowledgeBase}
 
         } catch (err) {
             console.error("HF Fetch Error:", err);
-            return "I apologize, but I am having trouble connecting. Please call reception at +260978178820.";
+            return "I apologize, but I am having trouble connecting to the royal network. Please call reception at +260978178820.";
         }
     }
 );
