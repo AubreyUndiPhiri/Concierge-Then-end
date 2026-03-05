@@ -1,6 +1,7 @@
 import wixData from 'wix-data';
 import { local } from 'wix-storage';
 import { verifyStaffLogin } from 'backend/auth.web.js'; 
+import { enrollStaff, getAdminKPIs } from 'backend/staffManager.web.js'; // Ensure this backend file is created
 
 let dashboard; 
 let currentDept = "";
@@ -48,6 +49,23 @@ $w.onReady(function () {
             }
         }
 
+        // --- NEW ADMIN FUNCTIONALITY: STAFF ENROLLMENT ---
+        if (d.type === "enrollStaff") {
+            try {
+                // d.staffData: { email, password, firstName, roles }
+                const result = await enrollStaff(d.staffData);
+                dashboard.postMessage({ type: "alert", msg: "New Staff Enrolled Successfully" });
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Enrollment Error: " + err.message });
+            }
+        }
+
+        // --- NEW ADMIN FUNCTIONALITY: KPI REFRESH ---
+        if (d.type === "refreshKPIs") {
+            const kpis = await getAdminKPIs();
+            dashboard.postMessage({ type: "loadKPIs", data: kpis });
+        }
+
         // AUTHENTICATION: LOGOUT
         if (d.type === "staffLogout") {
             local.removeItem("staffSession");
@@ -62,17 +80,15 @@ $w.onReady(function () {
             await loadOrders(currentDept);
             await fetchAvailability(currentDept);
             
-            // Specifically load USD prices for Activities
             if (currentDept === "Activities") {
                 await fetchActivityPrices();
             }
         }
 
-        // AI KNOWLEDGE UPDATE: General Availability (Text)
+        // AI KNOWLEDGE UPDATE
         if (d.type === "saveAvailability") {
             const staffName = getStaffName();
             const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
-            
             await saveLodgeSettings(settingsTitle, d.text, staffName);
             
             dashboard.postMessage({ 
@@ -86,7 +102,6 @@ $w.onReady(function () {
             await fetchAvailability(currentDept); 
         }
 
-        // AI PRICE UPDATE: USD Prices for Activities
         if (d.type === "saveActivityPrices") {
             const staffName = getStaffName();
             await saveLodgeSettings("ActivitiesPrices", d.text, staffName);
@@ -99,7 +114,6 @@ $w.onReady(function () {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
                 
-                // Real-time Guest Notification
                 await wixData.insert("ChatHistory", {
                     userMessage: "[SYSTEM_ACTION: NOTIFY_READY]",
                     aiResponse: `Mwaiseni! Your ${d.dept} request is now ready.`,
@@ -118,23 +132,40 @@ $w.onReady(function () {
 /** * HELPER FUNCTIONS 
  */
 
-function getStaffName() {
-    return loggedInStaff ? (loggedInStaff.firstName || loggedInStaff.name || "Staff") : "Staff";
-}
-
 async function setupDashboard(user) {
     const formattedUser = formatUser(user);
-    dashboard.postMessage({ type: "setUser", user: formattedUser });
-    
-    if (formattedUser.roles && formattedUser.roles.length > 0) {
-        currentDept = formattedUser.roles[0];
-        await loadOrders(currentDept);
-        await fetchAvailability(currentDept);
-        if (currentDept === "Activities") await fetchActivityPrices();
+    const isAdmin = formattedUser.roles.includes("Admin");
 
-        if (refreshInterval) clearInterval(refreshInterval);
-        refreshInterval = setInterval(() => loadOrders(currentDept), 10000);
+    // Pass user data and admin status to the HTML UI
+    dashboard.postMessage({ 
+        type: "setUser", 
+        user: formattedUser, 
+        isAdmin: isAdmin 
+    });
+    
+    // Initial data load
+    currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
+    await loadOrders(currentDept);
+    await fetchAvailability(currentDept);
+    
+    // If Admin, load the KPIs immediately
+    if (isAdmin) {
+        const kpis = await getAdminKPIs();
+        dashboard.postMessage({ type: "loadKPIs", data: kpis });
     }
+
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval = setInterval(async () => {
+        await loadOrders(currentDept);
+        if (isAdmin) {
+            const kpis = await getAdminKPIs();
+            dashboard.postMessage({ type: "loadKPIs", data: kpis });
+        }
+    }, 10000);
+}
+
+function getStaffName() {
+    return loggedInStaff ? (loggedInStaff.firstName || loggedInStaff.name || "Staff") : "Staff";
 }
 
 async function loadOrders(department) {
@@ -144,7 +175,6 @@ async function loadOrders(department) {
 
     try {
         const query = wixData.query("PendingRequests").eq("requestType", department).ge("_createdDate", today);
-        
         const [active, history] = await Promise.all([
             query.eq("isPrinted", false).descending("_createdDate").find(),
             query.eq("isPrinted", true).limit(20).descending("_createdDate").find()
@@ -167,18 +197,12 @@ async function fetchAvailability(department) {
     
     if (results.items.length > 0) {
         const item = results.items[0];
-        // Automatic daily reset for Kitchen
-        if (department === "Kitchen" && item._updatedDate && !isToday(new Date(item._updatedDate))) {
-            await saveLodgeSettings(settingsTitle, "", "System Reset");
-            dashboard.postMessage({ type: "loadAvailability", text: "", updatedBy: "System", updatedAt: "Midnight" });
-        } else {
-            dashboard.postMessage({ 
-                type: "loadAvailability", 
-                text: item.unavailableText || "", 
-                updatedBy: item.lastUpdatedBy || "Staff", 
-                updatedAt: new Date(item._updatedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            });
-        }
+        dashboard.postMessage({ 
+            type: "loadAvailability", 
+            text: item.unavailableText || "", 
+            updatedBy: item.lastUpdatedBy || "Staff", 
+            updatedAt: new Date(item._updatedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
     }
 }
 
@@ -204,7 +228,7 @@ async function saveLodgeSettings(title, text, staffName) {
 }
 
 function formatUser(user) { 
-    return { ...user, roles: user.roles.map(r => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()) }; 
+    return { ...user, roles: (user.roles || []).map(r => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()) }; 
 }
 
 function isToday(date) { 
