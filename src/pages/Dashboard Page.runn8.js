@@ -1,7 +1,12 @@
 import wixData from 'wix-data';
 import { local } from 'wix-storage';
 import { verifyStaffLogin } from 'backend/auth.web.js'; 
-import { enrollStaff, getAdminKPIs } from 'backend/staffManager.web.js'; // Ensure this backend file is created
+import { 
+    enrollStaff, 
+    getAdminKPIs, 
+    getAllStaff, 
+    updateStaffRoles 
+} from 'backend/staffManager.web.js'; // Ensure these 4 are in your backend file
 
 let dashboard; 
 let currentDept = "";
@@ -11,7 +16,7 @@ let refreshInterval;
 $w.onReady(function () {
     dashboard = $w("#html1"); 
 
-    // PERSISTENCE: Auto-resume session
+    // PERSISTENCE: Resume session
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) { 
         try {
@@ -24,7 +29,7 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
-        // INITIALIZATION Handshake
+        // 1. INITIALIZATION Handshake
         if (d.type === "ready") {
             if (!loggedInStaff) { 
                 dashboard.postMessage({ type: "showLogin" }); 
@@ -33,7 +38,7 @@ $w.onReady(function () {
             }
         }
 
-        // AUTHENTICATION: LOGIN
+        // 2. AUTHENTICATION Logic
         if (d.type === "staffLogin") {
             try {
                 const result = await verifyStaffLogin(d.email, d.password);
@@ -49,24 +54,6 @@ $w.onReady(function () {
             }
         }
 
-        // --- NEW ADMIN FUNCTIONALITY: STAFF ENROLLMENT ---
-        if (d.type === "enrollStaff") {
-            try {
-                // d.staffData: { email, password, firstName, roles }
-                const result = await enrollStaff(d.staffData);
-                dashboard.postMessage({ type: "alert", msg: "New Staff Enrolled Successfully" });
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Enrollment Error: " + err.message });
-            }
-        }
-
-        // --- NEW ADMIN FUNCTIONALITY: KPI REFRESH ---
-        if (d.type === "refreshKPIs") {
-            const kpis = await getAdminKPIs();
-            dashboard.postMessage({ type: "loadKPIs", data: kpis });
-        }
-
-        // AUTHENTICATION: LOGOUT
         if (d.type === "staffLogout") {
             local.removeItem("staffSession");
             loggedInStaff = null;
@@ -74,41 +61,63 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // FILTERING: Department Switch
+        // 3. SETTINGS GEAR: STAFF MANAGEMENT (The "Handshake")
+        if (d.type === "getStaffList") {
+            const list = await getAllStaff();
+            dashboard.postMessage({ type: "staffListUpdate", payload: list.items });
+        }
+
+        if (d.type === "updateStaffRoles") {
+            try {
+                await updateStaffRoles(d.id, d.roles);
+                dashboard.postMessage({ type: "alert", msg: "Staff permissions updated successfully." });
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Update failed: " + err.message });
+            }
+        }
+
+        // 4. ADMIN ENROLLMENT & KPI UPDATES
+        if (d.type === "enrollStaff") {
+            try {
+                await enrollStaff(d.staffData);
+                dashboard.postMessage({ type: "alert", msg: "New Staff Enrolled Successfully" });
+                // Refresh list if settings is open
+                const list = await getAllStaff();
+                dashboard.postMessage({ type: "staffListUpdate", payload: list.items });
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Enrollment Error: " + err.message });
+            }
+        }
+
+        if (d.type === "refreshKPIs") {
+            const kpis = await getAdminKPIs();
+            dashboard.postMessage({ type: "loadKPIs", data: kpis });
+            dashboard.postMessage({ type: "alert", msg: "Analytics Refreshed" });
+        }
+
+        // 5. DEPARTMENT FILTERING
         if (d.type === "filter") {
             currentDept = d.department;
             await loadOrders(currentDept);
             await fetchAvailability(currentDept);
-            
-            if (currentDept === "Activities") {
-                await fetchActivityPrices();
-            }
+            if (currentDept === "Activities") await fetchActivityPrices();
         }
 
-        // AI KNOWLEDGE UPDATE
+        // 6. AI KNOWLEDGE UPDATES
         if (d.type === "saveAvailability") {
             const staffName = getStaffName();
             const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
             await saveLodgeSettings(settingsTitle, d.text, staffName);
-            
-            dashboard.postMessage({ 
-                type: "saveConfirmed", 
-                text: d.text,
-                updatedBy: staffName,
-                updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            });
-
             dashboard.postMessage({ type: "alert", msg: `AI ${currentDept} Availability Synced` });
             await fetchAvailability(currentDept); 
         }
 
         if (d.type === "saveActivityPrices") {
-            const staffName = getStaffName();
-            await saveLodgeSettings("ActivitiesPrices", d.text, staffName);
+            await saveLodgeSettings("ActivitiesPrices", d.text, getStaffName());
             dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated (USD $)" });
         }
 
-        // ORDER FULFILLMENT
+        // 7. ORDER FULFILLMENT
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
@@ -122,33 +131,27 @@ $w.onReady(function () {
                 }, { suppressAuth: true });
 
                 await loadOrders(currentDept);
-            } catch (err) {
-                console.error("Fulfillment failed:", err);
-            }
+            } catch (err) { console.error("Fulfillment failed:", err); }
         }
     });
 });
 
-/** * HELPER FUNCTIONS 
- */
+/** * HELPER FUNCTIONS **/
 
 async function setupDashboard(user) {
     const formattedUser = formatUser(user);
     const isAdmin = formattedUser.roles.includes("Admin");
 
-    // Pass user data and admin status to the HTML UI
     dashboard.postMessage({ 
         type: "setUser", 
         user: formattedUser, 
         isAdmin: isAdmin 
     });
     
-    // Initial data load
     currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
     await loadOrders(currentDept);
     await fetchAvailability(currentDept);
     
-    // If Admin, load the KPIs immediately
     if (isAdmin) {
         const kpis = await getAdminKPIs();
         dashboard.postMessage({ type: "loadKPIs", data: kpis });
@@ -161,7 +164,7 @@ async function setupDashboard(user) {
             const kpis = await getAdminKPIs();
             dashboard.postMessage({ type: "loadKPIs", data: kpis });
         }
-    }, 10000);
+    }, 15000);
 }
 
 function getStaffName() {
@@ -182,19 +185,15 @@ async function loadOrders(department) {
 
         dashboard.postMessage({ 
             type: "updateOrders", 
-            dept: department, 
             orders: active.items, 
             history: history.items 
         });
-    } catch (err) {
-        console.error("Order load error:", err);
-    }
+    } catch (err) { console.error("Order load error:", err); }
 }
 
 async function fetchAvailability(department) {
     const settingsTitle = department === "Kitchen" ? "DailyAvailability" : `${department}Availability`;
     const results = await wixData.query("LodgeSettings").eq("title", settingsTitle).find();
-    
     if (results.items.length > 0) {
         const item = results.items[0];
         dashboard.postMessage({ 
@@ -209,10 +208,7 @@ async function fetchAvailability(department) {
 async function fetchActivityPrices() {
     const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
     if (priceData.items.length > 0) {
-        dashboard.postMessage({ 
-            type: "loadActivityPrices", 
-            text: priceData.items[0].unavailableText 
-        });
+        dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText });
     }
 }
 
@@ -222,16 +218,9 @@ async function saveLodgeSettings(title, text, staffName) {
         const toSave = { title, unavailableText: text, lastUpdatedBy: staffName };
         if (results.items.length > 0) toSave._id = results.items[0]._id;
         return await wixData.save("LodgeSettings", toSave);
-    } catch (err) {
-        console.error("Settings save error:", err);
-    }
+    } catch (err) { console.error("Settings save error:", err); }
 }
 
 function formatUser(user) { 
     return { ...user, roles: (user.roles || []).map(r => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()) }; 
-}
-
-function isToday(date) { 
-    const today = new Date(); 
-    return date.toDateString() === today.toDateString();
 }
