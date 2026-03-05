@@ -17,7 +17,7 @@ let refreshInterval;
 $w.onReady(function () {
     dashboard = $w("#html1"); 
 
-    // PERSISTENCE: Resume session
+    // PERSISTENCE: Resume session on load
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) { 
         try {
@@ -78,7 +78,7 @@ $w.onReady(function () {
 
         if (d.type === "saveDrivers") {
             await saveDriverInfo(d.text);
-            dashboard.postMessage({ type: "alert", msg: "AI Driver Context Updated!" });
+            dashboard.postMessage({ type: "alert", msg: "Royal driver list has been synced." });
         }
 
         if (d.type === "updateStaffRoles") {
@@ -90,11 +90,31 @@ $w.onReady(function () {
             }
         }
 
+        // NEW: ADMIN EDIT STAFF INFORMATION
+        if (d.type === "updateStaffInfo") {
+            try {
+                const staff = await wixData.get("StaffProfiles", d.data.id, { suppressAuth: true });
+                const toSave = { 
+                    ...staff, 
+                    firstName: d.data.firstName, 
+                    email: d.data.email, 
+                    password: d.data.password 
+                };
+                await wixData.update("StaffProfiles", toSave, { suppressAuth: true });
+                
+                dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
+                const list = await getAllStaff();
+                dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Error: " + err.message });
+            }
+        }
+
         // 4. ADMIN ENROLLMENT & KPI UPDATES
         if (d.type === "enrollStaff") {
             try {
                 await enrollStaff(d.staffData);
-                dashboard.postMessage({ type: "alert", msg: "New Staff Enrolled Successfully" });
+                dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
             } catch (err) {
@@ -105,7 +125,7 @@ $w.onReady(function () {
         if (d.type === "refreshKPIs") {
             const kpis = await getAdminKPIs();
             dashboard.postMessage({ type: "loadKPIs", data: kpis });
-            dashboard.postMessage({ type: "alert", msg: "Analytics Refreshed" });
+            dashboard.postMessage({ type: "alert", msg: "Royal Analytics Refreshed." });
         }
 
         // 5. DEPARTMENT FILTERING
@@ -121,13 +141,13 @@ $w.onReady(function () {
             const staffName = getStaffName();
             const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
             await saveLodgeSettings(settingsTitle, d.text, staffName);
-            dashboard.postMessage({ type: "alert", msg: `AI ${currentDept} Availability Synced` });
+            dashboard.postMessage({ type: "alert", msg: `AI ${currentDept} Context Synced.` });
             await fetchAvailability(currentDept); 
         }
 
         if (d.type === "saveActivityPrices") {
             await saveLodgeSettings("ActivitiesPrices", d.text, getStaffName());
-            dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated (USD $)" });
+            dashboard.postMessage({ type: "alert", msg: "Dynamic activity pricing is now live." });
         }
 
         // 7. ORDER FULFILLMENT
