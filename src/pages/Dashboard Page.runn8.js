@@ -6,7 +6,7 @@ import {
     getAdminKPIs, 
     getAllStaff, 
     updateStaffRoles,
-    saveDriverInfo // Ensure this matches your backend file
+    saveDriverInfo 
 } from 'backend/staffManager.web.js'; 
 
 let dashboard; 
@@ -65,14 +65,14 @@ $w.onReady(function () {
         // 3. SETTINGS: STAFF & DRIVER MANAGEMENT
         if (d.type === "getStaffList") {
             const list = await getAllStaff();
-            dashboard.postMessage({ type: "staffListUpdate", payload: list.items });
+            dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
         }
 
-        if (d.type === "getDriverList") {
-            const driverData = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
+        if (d.type === "getDriverInfo") {
+            const res = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
             dashboard.postMessage({ 
                 type: "loadDrivers", 
-                text: driverData.items.length > 0 ? driverData.items[0].unavailableText : "" 
+                text: res.items.length > 0 ? res.items[0].unavailableText : "" 
             });
         }
 
@@ -96,7 +96,7 @@ $w.onReady(function () {
                 await enrollStaff(d.staffData);
                 dashboard.postMessage({ type: "alert", msg: "New Staff Enrolled Successfully" });
                 const list = await getAllStaff();
-                dashboard.postMessage({ type: "staffListUpdate", payload: list.items });
+                dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
             } catch (err) {
                 dashboard.postMessage({ type: "alert", msg: "Enrollment Error: " + err.message });
             }
@@ -198,8 +198,8 @@ async function loadOrders(department) {
 
         dashboard.postMessage({ 
             type: "updateOrders", 
-            orders: active.items, 
-            history: history.items 
+            orders: active.items || [], 
+            history: history.items || [] 
         });
     } catch (err) { console.error("Order load error:", err); }
 }
