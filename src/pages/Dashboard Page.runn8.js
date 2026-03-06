@@ -7,7 +7,7 @@ import {
     getAllStaff, 
     updateStaffRoles,
     saveDriverInfo,
-    deleteStaff // ALIGNMENT: Imported to handle protected deletions
+    deleteStaff // ALIGNMENT: Imported to handle protected backend deletions
 } from 'backend/staffManager.web.js'; 
 
 let dashboard; 
@@ -18,6 +18,7 @@ let refreshInterval;
 $w.onReady(function () {
     dashboard = $w("#html1"); 
 
+    // PERSISTENCE: Resume session on load
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) { 
         try {
@@ -30,6 +31,7 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
+        // INITIALIZATION Handshake
         if (d.type === "ready") {
             if (!loggedInStaff) { 
                 dashboard.postMessage({ type: "showLogin" }); 
@@ -38,6 +40,7 @@ $w.onReady(function () {
             }
         }
 
+        // AUTHENTICATION Logic
         if (d.type === "staffLogin") {
             try {
                 const result = await verifyStaffLogin(d.email, d.password);
@@ -60,6 +63,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
+        // SETTINGS: STAFF & DRIVER MANAGEMENT
         if (d.type === "getStaffList") {
             const list = await getAllStaff();
             dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
@@ -82,14 +86,17 @@ $w.onReady(function () {
             }
         }
 
-        // ALIGNMENT: Using deleteStaff from backend to respect Master Admin protection
+        // ALIGNMENT: Using protected deleteStaff from backend
         if (d.type === "deleteStaff") {
             try {
                 await deleteStaff(d.id); 
                 dashboard.postMessage({ type: "alert", msg: "Member has been removed from the registry." });
+                
+                // Refresh list automatically
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
             } catch (err) {
+                // Displays the "Security Violation" if Master Admin targeted
                 dashboard.postMessage({ type: "alert", msg: err.message });
             }
         }
@@ -103,6 +110,7 @@ $w.onReady(function () {
             }
         }
 
+        // ADMIN EDIT STAFF INFORMATION
         if (d.type === "updateStaffInfo") {
             try {
                 const staff = await wixData.get("StaffProfiles", d.data.id, { suppressAuth: true });
@@ -114,6 +122,7 @@ $w.onReady(function () {
                     roles: d.data.roles 
                 };
                 await wixData.update("StaffProfiles", toSave, { suppressAuth: true });
+                
                 dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
@@ -122,6 +131,7 @@ $w.onReady(function () {
             }
         }
 
+        // ADMIN ENROLLMENT & KPI UPDATES
         if (d.type === "enrollStaff") {
             try {
                 await enrollStaff(d.staffData);
@@ -139,6 +149,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "alert", msg: "Royal Analytics Refreshed." });
         }
 
+        // DEPARTMENT FILTERING
         if (d.type === "filter") {
             currentDept = d.department;
             await loadOrders(currentDept);
@@ -146,6 +157,7 @@ $w.onReady(function () {
             if (currentDept === "Activities") await fetchActivityPrices();
         }
 
+        // AI KNOWLEDGE UPDATES
         if (d.type === "saveAvailability") {
             const staffName = getStaffName();
             const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
@@ -159,33 +171,46 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "alert", msg: "Dynamic activity pricing is now live." });
         }
 
+        // ORDER FULFILLMENT
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
+                
                 await wixData.insert("ChatHistory", {
                     userMessage: "[SYSTEM_ACTION: NOTIFY_READY]",
                     aiResponse: `Mwaiseni! Your ${d.dept} request is now ready.`,
                     roomNumber: String(d.room),
                     timestamp: new Date()
                 }, { suppressAuth: true });
+
                 await loadOrders(currentDept);
             } catch (err) { console.error("Fulfillment failed:", err); }
         }
     });
 });
 
+/** * HELPER FUNCTIONS **/
+
 async function setupDashboard(user) {
     const formattedUser = formatUser(user);
     const isAdmin = formattedUser.roles.includes("Admin");
-    dashboard.postMessage({ type: "setUser", user: formattedUser, isAdmin: isAdmin });
+
+    dashboard.postMessage({ 
+        type: "setUser", 
+        user: formattedUser, 
+        isAdmin: isAdmin 
+    });
+    
     currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
     await loadOrders(currentDept);
     await fetchAvailability(currentDept);
+    
     if (isAdmin) {
         const kpis = await getAdminKPIs();
         dashboard.postMessage({ type: "loadKPIs", data: kpis });
     }
+
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(async () => {
         await loadOrders(currentDept);
@@ -204,13 +229,19 @@ async function loadOrders(department) {
     if (!department) return;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
     try {
         const query = wixData.query("PendingRequests").eq("requestType", department).ge("_createdDate", today);
         const [active, history] = await Promise.all([
             query.eq("isPrinted", false).descending("_createdDate").find(),
             query.eq("isPrinted", true).limit(20).descending("_createdDate").find()
         ]);
-        dashboard.postMessage({ type: "updateOrders", orders: active.items || [], history: history.items || [] });
+
+        dashboard.postMessage({ 
+            type: "updateOrders", 
+            orders: active.items || [], 
+            history: history.items || [] 
+        });
     } catch (err) { console.error("Order load error:", err); }
 }
 
