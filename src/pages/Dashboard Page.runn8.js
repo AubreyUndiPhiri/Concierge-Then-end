@@ -77,8 +77,25 @@ $w.onReady(function () {
         }
 
         if (d.type === "saveDrivers") {
-            await saveDriverInfo(d.text);
-            dashboard.postMessage({ type: "alert", msg: "Royal driver list has been synced." });
+            try {
+                await saveDriverInfo(d.text);
+                dashboard.postMessage({ type: "alert", msg: "Royal driver list has been synced." });
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Driver sync failed." });
+            }
+        }
+
+        // NEW: DELETE STAFF MEMBER
+        if (d.type === "deleteStaff") {
+            try {
+                await wixData.remove("StaffProfiles", d.id, { suppressAuth: true });
+                dashboard.postMessage({ type: "alert", msg: "Member has been removed from the registry." });
+                // Refresh list automatically
+                const list = await getAllStaff();
+                dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Deletion failed: " + err.message });
+            }
         }
 
         if (d.type === "updateStaffRoles") {
@@ -90,7 +107,7 @@ $w.onReady(function () {
             }
         }
 
-        // NEW: ADMIN EDIT STAFF INFORMATION
+        // ADMIN EDIT STAFF INFORMATION
         if (d.type === "updateStaffInfo") {
             try {
                 const staff = await wixData.get("StaffProfiles", d.data.id, { suppressAuth: true });
@@ -98,7 +115,8 @@ $w.onReady(function () {
                     ...staff, 
                     firstName: d.data.firstName, 
                     email: d.data.email, 
-                    password: d.data.password 
+                    password: d.data.password,
+                    roles: d.data.roles // Ensure roles are also updated during info edit
                 };
                 await wixData.update("StaffProfiles", toSave, { suppressAuth: true });
                 
