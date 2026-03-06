@@ -2,21 +2,7 @@ import { Permissions, webMethod } from "wix-web-module";
 import wixData from 'wix-data';
 
 /**
- * @description Fetches all registered staff members.
- */
-export const getAllStaff = webMethod(Permissions.Anyone, async () => {
-    try {
-        return await wixData.query("StaffProfiles")
-            .ascending("firstName")
-            .find({ suppressAuth: true });
-    } catch (err) {
-        console.error("Failed to fetch staff list:", err.message);
-        throw new Error("Could not retrieve staff list.");
-    }
-});
-
-/**
- * @description Deletes a staff member, but protects the Master Admin.
+ * @description Deletes a staff member, but protects the Master Admins.
  */
 export const deleteStaff = webMethod(Permissions.Anyone, async (id) => {
     try {
@@ -25,19 +11,18 @@ export const deleteStaff = webMethod(Permissions.Anyone, async (id) => {
         // 1. Fetch user data to verify identity before deletion
         const staffToProtect = await wixData.get("StaffProfiles", id, { suppressAuth: true });
         
-        // 2. MASTER ADMIN PROTECTION LOGIC
-        // Replace 'master@yourresort.com' with your actual primary email address
-        const masterEmail = "master@yourresort.com"; 
+        // 2. MASTER ADMIN PROTECTION LOGIC (Multiple Emails)
+        const masterEmails = ["stembo38@gmail.com", "phiriaubrey41@gmail.com"]; 
 
-        if (staffToProtect && staffToProtect.email === masterEmail) {
-            throw new Error("Security Violation: This Master Admin profile cannot be deleted.");
+        if (staffToProtect && masterEmails.includes(staffToProtect.email)) {
+            throw new Error("Security Violation: This Master Admin profile is protected and cannot be deleted.");
         }
 
-        // 3. Proceed with deletion if the user is not the Master Admin
+        // 3. Proceed with deletion if the user is not in the master list
         return await wixData.remove("StaffProfiles", id, { suppressAuth: true });
     } catch (err) {
         console.error("Failed to delete staff member:", err.message);
-        // This error message will be sent back to your HTML dashboard alert
+        // This ensures the error message WDE0027 or your custom error is sent to the UI
         throw new Error(err.message); 
     }
 });
