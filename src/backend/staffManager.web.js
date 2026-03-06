@@ -2,7 +2,7 @@ import { Permissions, webMethod } from "wix-web-module";
 import wixData from 'wix-data';
 
 /**
- * @description Fetches all registered staff members for the Admin Settings management list.
+ * @description Fetches all registered staff members.
  */
 export const getAllStaff = webMethod(Permissions.Anyone, async () => {
     try {
@@ -16,15 +16,29 @@ export const getAllStaff = webMethod(Permissions.Anyone, async () => {
 });
 
 /**
- * @description Deletes a staff member from the registry.
+ * @description Deletes a staff member, but protects the Master Admin.
  */
 export const deleteStaff = webMethod(Permissions.Anyone, async (id) => {
     try {
         if (!id) throw new Error("No ID provided for deletion.");
+
+        // 1. Fetch user data to verify identity before deletion
+        const staffToProtect = await wixData.get("StaffProfiles", id, { suppressAuth: true });
+        
+        // 2. MASTER ADMIN PROTECTION LOGIC
+        // Replace 'master@yourresort.com' with your actual primary email address
+        const masterEmail = "master@yourresort.com"; 
+
+        if (staffToProtect && staffToProtect.email === masterEmail) {
+            throw new Error("Security Violation: This Master Admin profile cannot be deleted.");
+        }
+
+        // 3. Proceed with deletion if the user is not the Master Admin
         return await wixData.remove("StaffProfiles", id, { suppressAuth: true });
     } catch (err) {
         console.error("Failed to delete staff member:", err.message);
-        throw new Error("Deletion failed: " + err.message);
+        // This error message will be sent back to your HTML dashboard alert
+        throw new Error(err.message); 
     }
 });
 
@@ -65,7 +79,7 @@ export const enrollStaff = webMethod(Permissions.Anyone, async (staffData) => {
             "email": staffData.email,
             "password": staffData.password, 
             "firstName": staffData.firstName,
-            "roles": staffData.roles, // Array: ["Kitchen", "Spa", etc.]
+            "roles": staffData.roles, 
             "enrolledAt": new Date()
         };
         
@@ -112,7 +126,7 @@ export const saveDriverInfo = webMethod(Permissions.Anyone, async (text) => {
 
         const toSave = { 
             "title": "DriverInfo", 
-            "unavailableText": text // Dashboard uses this field for the contacts
+            "unavailableText": text 
         };
 
         if (results.items.length > 0) {
