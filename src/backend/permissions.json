@@ -1,16 +1,24 @@
 {
   "web-methods": {
-    "*": {
+    "backend/auth.web.js": {
+      "verifyStaffLogin": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
+      }
+    },
+    "backend/staffManager.web.js": {
       "*": {
-        "siteOwner": {
-          "invoke": true
-        },
-        "siteMember": {
-          "invoke": false
-        },
-        "anonymous": {
-          "invoke": false
-        }
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": false
+      }
+    },
+    "backend/aibridge.web.js": {
+      "askAI": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
       }
     }
   }
