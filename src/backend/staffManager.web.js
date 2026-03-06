@@ -16,6 +16,19 @@ export const getAllStaff = webMethod(Permissions.Anyone, async () => {
 });
 
 /**
+ * @description Deletes a staff member from the registry.
+ */
+export const deleteStaff = webMethod(Permissions.Anyone, async (id) => {
+    try {
+        if (!id) throw new Error("No ID provided for deletion.");
+        return await wixData.remove("StaffProfiles", id, { suppressAuth: true });
+    } catch (err) {
+        console.error("Failed to delete staff member:", err.message);
+        throw new Error("Deletion failed: " + err.message);
+    }
+});
+
+/**
  * @description Updates the departments/roles assigned to a specific staff member.
  */
 export const updateStaffRoles = webMethod(Permissions.Anyone, async (id, roles) => {
@@ -99,7 +112,7 @@ export const saveDriverInfo = webMethod(Permissions.Anyone, async (text) => {
 
         const toSave = { 
             "title": "DriverInfo", 
-            "unavailableText": text // We use this field to store the names and contacts
+            "unavailableText": text // Dashboard uses this field for the contacts
         };
 
         if (results.items.length > 0) {
