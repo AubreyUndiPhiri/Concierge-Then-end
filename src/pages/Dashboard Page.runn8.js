@@ -7,7 +7,7 @@ import {
     getAllStaff, 
     updateStaffRoles,
     saveDriverInfo,
-    deleteStaff // Added this import to handle protected deletions
+    deleteStaff // IMPORTANT: Import the backend function with Master Admin protection
 } from 'backend/staffManager.web.js'; 
 
 let dashboard; 
@@ -86,11 +86,10 @@ $w.onReady(function () {
             }
         }
 
-        // UPDATED: DELETE STAFF MEMBER (Calling Backend for Protection)
+        // 4. PROTECTED DELETE STAFF MEMBER
         if (d.type === "deleteStaff") {
             try {
-                // We call the backend function instead of wixData.remove directly
-                // to trigger the Master Admin email check
+                // Calls the backend function that checks for stembo38@gmail.com and phiriaubrey41@gmail.com
                 await deleteStaff(d.id); 
                 
                 dashboard.postMessage({ type: "alert", msg: "Member has been removed from the registry." });
@@ -99,11 +98,12 @@ $w.onReady(function () {
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
             } catch (err) {
-                // If it's a Master Admin, the backend throws an error which we catch here
+                // Displays the "Security Violation" message from the backend if a Master Admin is targeted
                 dashboard.postMessage({ type: "alert", msg: err.message });
             }
         }
 
+        // 5. UPDATE ROLES AND INFO
         if (d.type === "updateStaffRoles") {
             try {
                 await updateStaffRoles(d.id, d.roles);
@@ -113,7 +113,6 @@ $w.onReady(function () {
             }
         }
 
-        // ADMIN EDIT STAFF INFORMATION
         if (d.type === "updateStaffInfo") {
             try {
                 const staff = await wixData.get("StaffProfiles", d.data.id, { suppressAuth: true });
@@ -134,7 +133,7 @@ $w.onReady(function () {
             }
         }
 
-        // 4. ADMIN ENROLLMENT & KPI UPDATES
+        // 6. ENROLLMENT & KPI UPDATES
         if (d.type === "enrollStaff") {
             try {
                 await enrollStaff(d.staffData);
@@ -152,7 +151,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "alert", msg: "Royal Analytics Refreshed." });
         }
 
-        // 5. DEPARTMENT FILTERING
+        // 7. DEPARTMENT FILTERING & AI KNOWLEDGE
         if (d.type === "filter") {
             currentDept = d.department;
             await loadOrders(currentDept);
@@ -160,7 +159,6 @@ $w.onReady(function () {
             if (currentDept === "Activities") await fetchActivityPrices();
         }
 
-        // 6. AI KNOWLEDGE UPDATES
         if (d.type === "saveAvailability") {
             const staffName = getStaffName();
             const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
@@ -174,7 +172,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "alert", msg: "Dynamic activity pricing is now live." });
         }
 
-        // 7. ORDER FULFILLMENT
+        // 8. ORDER FULFILLMENT
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
