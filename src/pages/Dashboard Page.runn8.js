@@ -6,7 +6,8 @@ import {
     getAdminKPIs, 
     getAllStaff, 
     updateStaffRoles,
-    saveDriverInfo 
+    saveDriverInfo,
+    deleteStaff // Added this import to handle protected deletions
 } from 'backend/staffManager.web.js'; 
 
 let dashboard; 
@@ -85,16 +86,21 @@ $w.onReady(function () {
             }
         }
 
-        // NEW: DELETE STAFF MEMBER
+        // UPDATED: DELETE STAFF MEMBER (Calling Backend for Protection)
         if (d.type === "deleteStaff") {
             try {
-                await wixData.remove("StaffProfiles", d.id, { suppressAuth: true });
+                // We call the backend function instead of wixData.remove directly
+                // to trigger the Master Admin email check
+                await deleteStaff(d.id); 
+                
                 dashboard.postMessage({ type: "alert", msg: "Member has been removed from the registry." });
+                
                 // Refresh list automatically
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
             } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Deletion failed: " + err.message });
+                // If it's a Master Admin, the backend throws an error which we catch here
+                dashboard.postMessage({ type: "alert", msg: err.message });
             }
         }
 
@@ -116,7 +122,7 @@ $w.onReady(function () {
                     firstName: d.data.firstName, 
                     email: d.data.email, 
                     password: d.data.password,
-                    roles: d.data.roles // Ensure roles are also updated during info edit
+                    roles: d.data.roles 
                 };
                 await wixData.update("StaffProfiles", toSave, { suppressAuth: true });
                 
