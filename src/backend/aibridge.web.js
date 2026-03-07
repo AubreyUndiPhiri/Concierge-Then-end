@@ -14,7 +14,7 @@ async function createPendingRequest(roomNumber, roomName, department, details, g
         roomName: roomName,
         requestType: department,
         details: details,
-        fullContext: guestMsg, // Captures original guest message for staff context
+        fullContext: guestMsg, 
         status: "Pending Verification",
         timestamp: new Date(),
         isPrinted: false
@@ -59,19 +59,24 @@ export const askAI = webMethod(
 
         if (!hfToken) return "The AI concierge is currently offline.";
 
-        // 1. FETCH AVAILABILITY AND PRICE UPDATES FROM DATABASE
+        // 1. FETCH AVAILABILITY, PRICE, AND DRIVER UPDATES FROM DATABASE
         let availabilityContext = "";
         let priceContext = "";
+        let driverContext = "";
 
         try {
+            // IMPROVEMENT: Added "DriverInfo" to the query to ensure AI receives synced driver data
             const settings = await wixData.query("LodgeSettings")
-                .hasSome("title", ["DailyAvailability", "SpaAvailability", "ActivitiesAvailability", "ActivitiesPrices"])
+                .hasSome("title", ["DailyAvailability", "SpaAvailability", "ActivitiesAvailability", "ActivitiesPrices", "DriverInfo"])
                 .find({ suppressAuth: true });
             
             if (settings.items.length > 0) {
                 settings.items.forEach(item => {
                     if (item.title === "ActivitiesPrices" && item.unavailableText) {
                         priceContext = `UPDATED ACTIVITY PRICES: ${item.unavailableText}\n`;
+                    } else if (item.title === "DriverInfo" && item.unavailableText) {
+                        // IMPROVEMENT: Captured the specific synced driver information
+                        driverContext = `ROYAL DRIVER DIRECTORY: ${item.unavailableText}\n`;
                     } else if (item.unavailableText) {
                         const deptName = item.title.replace('Availability', '').replace('Daily', 'Kitchen');
                         availabilityContext += `- ${deptName}: The following are UNAVAILABLE today: ${item.unavailableText}.\n`;
@@ -118,11 +123,13 @@ III. ACTIVITIES:
         const systemPrompt = `
 Your name is Nkhosi. You are the professional Royal Concierge for Nkhosi Livingstone Lodge & SPA.
 
-AVAILABILITY & PRICING LOGIC:
+AVAILABILITY, PRICING & TRANSPORT LOGIC:
 ${priceContext || "Use standard pricing from Knowledge Base."}
 ${availabilityContext || "All services are available."}
+${driverContext || "Refer transport inquiries to the front desk."}
 
 PROTOCOL: 
+- If 'ROYAL DRIVER DIRECTORY' is provided above, use that specific list for all transport/taxi inquiries.
 - If 'UPDATED ACTIVITY PRICES' is provided above, you MUST prioritize those prices over the Knowledge Base.
 - If a guest asks for something marked as UNAVAILABLE, apologize politely and suggest a similar available alternative.
 
@@ -170,7 +177,7 @@ ${lodgeKnowledgeBase}
             // CHECKOUT TRIGGER LOGIC & DEPARTMENT ROUTING
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT]")) {
                 const msg = userMessage.toLowerCase();
-                let dept = "Activities"; // Default
+                let dept = "Activities"; 
 
                 if (msg.includes("steak") || msg.includes("chicken") || msg.includes("bream") || msg.includes("food") || msg.includes("burger") || msg.includes("nshima") || msg.includes("order") || msg.includes("dinner") || msg.includes("lunch")) {
                     dept = "Kitchen";
