@@ -6,8 +6,9 @@ import wixPayBackend from 'wix-pay-backend';
 
 /**
  * Helper: Creates a pending request in the database.
+ * UPDATED: Now accepts totalAmount to store with the record.
  */
-async function createPendingRequest(roomNumber, roomName, department, details, guestMsg) {
+async function createPendingRequest(roomNumber, roomName, department, details, guestMsg, totalAmount = "0") {
     const requestData = {
         clientName: "Lodge Guest",
         roomNumber: String(roomNumber),
@@ -15,6 +16,7 @@ async function createPendingRequest(roomNumber, roomName, department, details, g
         requestType: department,
         details: details,
         fullContext: guestMsg, 
+        totalAmount: totalAmount, // Stores the calculated total for the department to see
         status: "Pending Verification",
         timestamp: new Date(),
         isPrinted: false
@@ -65,7 +67,6 @@ export const askAI = webMethod(
         let driverContext = "";
 
         try {
-            // IMPROVEMENT: Added "DriverInfo" to the query to ensure AI receives synced driver data
             const settings = await wixData.query("LodgeSettings")
                 .hasSome("title", ["DailyAvailability", "SpaAvailability", "ActivitiesAvailability", "ActivitiesPrices", "DriverInfo"])
                 .find({ suppressAuth: true });
@@ -75,7 +76,6 @@ export const askAI = webMethod(
                     if (item.title === "ActivitiesPrices" && item.unavailableText) {
                         priceContext = `UPDATED ACTIVITY PRICES: ${item.unavailableText}\n`;
                     } else if (item.title === "DriverInfo" && item.unavailableText) {
-                        // IMPROVEMENT: Captured the specific synced driver information
                         driverContext = `ROYAL DRIVER DIRECTORY: ${item.unavailableText}\n`;
                     } else if (item.unavailableText) {
                         const deptName = item.title.replace('Availability', '').replace('Daily', 'Kitchen');
@@ -148,10 +148,10 @@ CONVERSATIONAL GUIDELINES:
          - Use "Kitchen" for food orders.
          - Use "Spa" for massages or beauty treatments.
          - Use "Activities" for tours and falls visits.
-         When the order is confirmed by the guest make sure that the receipt of theh full order and the respective prices and items is sent to the admin and staff dashboards respectively depending on the department so that they can as well see the items in the recent orders or history orders
+         When the order is confirmed by the guest make sure that the receipt of the full order and the respective prices and items is sent to the admin and staff dashboards respectively depending on the department so that they can as well see the items in the recent orders or history orders.
       3. ACCURACY: Always bold prices using the currency provided (e.g. **K250** or **$85**).
-      4. When they pick the items they have ordered, write the list back to them with the prices and the total, then pass that total in the check out so that it correctly shows the amount of money thy are suppose to pay for in the check out aswell 
-      5. The Trigger: ONLY after the guest confirms details, append [ACTION:TRIGGER_CHECKOUT].
+      4. RECEIPT GENERATION: When the guest picks items, list them back with individual prices and a calculated TOTAL (e.g., "1x Bream (**K245**), 1x Massage (**K1300**) - Total: **K1545**"). Then pass that total in the checkout so that it correctly shows the amount of money they are supposed to pay for in the checkout as well.
+      5. CHECKOUT SYNC: ONLY after the guest confirms details, append the trigger including the total numeric amount like this: [ACTION:TRIGGER_CHECKOUT|1545]. Use only the numeric value for the amount.
     
 
 KNOWLEDGE BASE:
@@ -191,6 +191,10 @@ ${lodgeKnowledgeBase}
 
             // CHECKOUT TRIGGER LOGIC & DEPARTMENT ROUTING
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT]")) {
+                // Extract amount from tag [ACTION:TRIGGER_CHECKOUT|1545]
+                const parts = aiResponse.split("|");
+                const amount = parts.length > 1 ? parts[1].replace("]", "") : "0";
+
                 const msg = userMessage.toLowerCase();
                 let dept = "Activities"; 
 
@@ -200,7 +204,8 @@ ${lodgeKnowledgeBase}
                     dept = "Spa";
                 }
                 
-                await createPendingRequest(sanitizedRoom, roomInfo.name, dept, "Guest initiating secure checkout", userMessage);
+                // Pass the extracted amount to the database record
+                await createPendingRequest(sanitizedRoom, roomInfo.name, dept, "Guest initiating secure checkout", aiResponse, amount);
             }
 
             return aiResponse;
