@@ -1,43 +1,33 @@
 import { triggeredEmails, contacts } from 'wix-crm-backend';
 import wixData from 'wix-data';
 
-/**
- * Notifies a specific department via email when a new request is made.
- */
 export async function notifyDepartmentOfNewOrder(orderItem) {
     const { requestType, roomNumber, clientName, details } = orderItem;
 
     try {
-        // 1. Fetch the email address of the staff member(s) assigned to this department
+        // 1. Identify staff members for the relevant department (Kitchen, Spa, etc.)
         const staffResults = await wixData.query("StaffProfiles")
             .hasSome("roles", [requestType])
-            .find({ suppressAuth: true });
+            .find({ suppressAuth: true }); //
 
-        if (staffResults.items.length === 0) {
-            console.log(`No staff members found for department: ${requestType}`);
-            return;
-        }
-
-        // 2. Loop through staff and send the triggered email
+        // 2. Loop through each staff member found and send the email
         const emailPromises = staffResults.items.map(async (staff) => {
-            // Triggered emails require a Contact ID. 
-            // We find or create a contact for the staff member email.
             const contactId = await getOrCreateContactId(staff.email);
             
-            return triggeredEmails.emailContact('New_Department_Order', contactId, {
+            // Note: Replace 'New_Order_ID' with the actual Email ID from your dashboard
+            return triggeredEmails.emailContact('New_Order_ID', contactId, {
                 variables: {
                     department: requestType,
                     roomNumber: String(roomNumber),
-                    guestName: clientName || "Guest",
+                    guestName: clientName || "Valued Guest",
                     orderDetails: details
                 }
             });
         });
 
         await Promise.all(emailPromises);
-        console.log(`Notifications sent to ${requestType} department.`);
     } catch (err) {
-        console.error("Failed to send triggered email:", err.message);
+        console.error("Email trigger failed:", err.message);
     }
 }
 
