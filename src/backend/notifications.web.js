@@ -5,17 +5,17 @@ export async function notifyDepartmentOfNewOrder(orderItem) {
     const { requestType, roomNumber, clientName, details } = orderItem;
 
     try {
-        // 1. Identify staff members for the relevant department (Kitchen, Spa, etc.)
+        // 1. Find staff members with the matching role (Kitchen, Spa, etc.)
         const staffResults = await wixData.query("StaffProfiles")
             .hasSome("roles", [requestType])
-            .find({ suppressAuth: true }); //
+            .find({ suppressAuth: true });
 
-        // 2. Loop through each staff member found and send the email
+        // 2. Send the email to each staff member found
         const emailPromises = staffResults.items.map(async (staff) => {
             const contactId = await getOrCreateContactId(staff.email);
             
-            // Note: Replace 'New_Order_ID' with the actual Email ID from your dashboard
-            return triggeredEmails.emailContact('New_Order_ID', contactId, {
+            // PASTE YOUR EMAIL ID HERE:
+            return triggeredEmails.emailContact('VDV45yE', contactId, {
                 variables: {
                     department: requestType,
                     roomNumber: String(roomNumber),
@@ -26,8 +26,9 @@ export async function notifyDepartmentOfNewOrder(orderItem) {
         });
 
         await Promise.all(emailPromises);
+        console.log(`Emails dispatched to ${requestType} team.`);
     } catch (err) {
-        console.error("Email trigger failed:", err.message);
+        console.error("Triggered Email Error:", err.message);
     }
 }
 
