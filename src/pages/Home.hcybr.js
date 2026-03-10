@@ -27,9 +27,10 @@ $w.onReady(() => {
             try {
                 await wixData.insert("PendingRequests", {
                     "roomNumber": String(formData.room || roomNumber),
-                    "clientName": formData.name || "Lodge Guest", // Captured from the HTML form
+                    "clientName": formData.name || "Lodge Guest", 
                     "details": `ORDER: ${formData.order}`,
-                    "fullContext": `Email: ${formData.email} | Mode: ${formData.paymentMode} | Message: ${formData.order}`, // Used for the Dashboard itemized parser
+                    "totalAmount": formData.amount || "0", // Store the calculated total
+                    "fullContext": `Email: ${formData.email} | Mode: ${formData.paymentMode} | Message: ${formData.order}`, 
                     "status": "Pending Verification",
                     "timestamp": new Date(),
                     "isPrinted": false
@@ -39,9 +40,9 @@ $w.onReady(() => {
 
                 // Trigger DPO card payment if selected
                 if (formData.paymentMode === 'card') {
-                    // Triggers the backend function to create a secure payment session
-                    // Note: '1' can be replaced with a dynamic total if your form calculates it
-                    const payment = await createActivityPayment("Concierge Service Order", 1, formData.name || "Lodge Guest");
+                    // UPDATED: Uses the dynamic total amount from the form/AI instead of a static '1'
+                    const numericPrice = Number(formData.amount);
+                    const payment = await createActivityPayment("Concierge Service Order", numericPrice, formData.name || "Lodge Guest");
                     
                     if (payment) {
                         const result = await wixPay.startPayment(payment.id);
@@ -85,13 +86,20 @@ $w.onReady(() => {
             // Send message to backend AI (aibridge.web.js)
             const aiResponse = await askAI(guestMsg, roomNumber, chatHistory);
 
-            // Handle AI instruction to open the checkout form
+            // Handle AI instruction to open the checkout form with parsed amount
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT]")) {
-                const cleanResponse = aiResponse.replace("[ACTION:TRIGGER_CHECKOUT]", "");
+                // UPDATED: Logic to extract total amount from the AI tag [ACTION:TRIGGER_CHECKOUT|1545]
+                const parts = aiResponse.split("|");
+                const totalAmount = parts.length > 1 ? parts[1].replace("]", "") : "0";
+                
+                // Clean the text response by removing the entire tag
+                const cleanResponse = parts[0].replace("[ACTION:TRIGGER_CHECKOUT]", "");
+                
                 chatWidget.postMessage({ type: "response", payload: cleanResponse });
                 chatWidget.postMessage({ 
                     type: "trigger_checkout", 
-                    placeholder: "Specify your items, quantity, or dietary requirements..." 
+                    amount: totalAmount, // Pass the total amount to the widget
+                    placeholder: `Confirming order for K${totalAmount}. Specify any additional notes...` 
                 });
             } else {
                 chatWidget.postMessage({ type: "response", payload: aiResponse });
