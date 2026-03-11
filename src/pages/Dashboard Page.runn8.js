@@ -89,7 +89,7 @@ $w.onReady(function () {
         if (d.type === "deleteStaff") {
             try {
                 await deleteStaff(d.id);
-                dashboard.postMessage({ type: "alert", msg: "Member has been removed from the registry." });
+                dashboard.postMessage({ type: "alert", msg: "Member removed from registry." });
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
             } catch (err) {
@@ -108,6 +108,7 @@ $w.onReady(function () {
             }
         }
 
+        // --- ADMIN EDIT STAFF INFO HANDLER ---
         if (d.type === "updateStaffInfo") {
             try {
                 const staff = await wixData.get("StaffProfiles", d.data.id, { suppressAuth: true });
@@ -119,11 +120,21 @@ $w.onReady(function () {
                     roles: d.data.roles
                 };
                 await wixData.update("StaffProfiles", toSave, { suppressAuth: true });
+                
                 dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
             } catch (err) {
                 dashboard.postMessage({ type: "alert", msg: "Error: " + err.message });
+            }
+        }
+
+        if (d.type === "updateStaffRoles") {
+            try {
+                await updateStaffRoles(d.id, d.roles);
+                dashboard.postMessage({ type: "alert", msg: "Staff permissions updated." });
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Update failed: " + err.message });
             }
         }
 
@@ -140,6 +151,11 @@ $w.onReady(function () {
             await saveLodgeSettings(settingsTitle, d.text, getStaffName());
             dashboard.postMessage({ type: "alert", msg: `AI ${currentDept} Context Synced.` });
             await fetchAvailability(currentDept);
+        }
+
+        if (d.type === "saveActivityPrices") {
+            await saveLodgeSettings("ActivitiesPrices", d.text, getStaffName());
+            dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated (USD $)" });
         }
 
         if (d.type === "refreshKPIs") {
@@ -178,6 +194,7 @@ async function setupDashboard(user) {
         isAdmin: isAdmin
     });
 
+    // Reset UI State for fresh login
     currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
     await loadOrders(currentDept);
     await fetchAvailability(currentDept);
