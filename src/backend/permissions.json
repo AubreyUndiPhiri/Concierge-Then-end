@@ -8,10 +8,35 @@
       }
     },
     "backend/staffManager.web.js": {
-      "*": {
+      "getAllStaff": {
         "siteOwner": true,
         "siteMember": true,
-        "anonymous": false
+        "anonymous": true
+      },
+      "enrollStaff": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
+      },
+      "updateStaffRoles": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
+      },
+      "deleteStaff": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
+      },
+      "getAdminKPIs": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
+      },
+      "saveDriverInfo": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
       }
     },
     "backend/aibridge.web.js": {
