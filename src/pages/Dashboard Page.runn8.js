@@ -94,6 +94,7 @@ $w.onReady(function () {
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
+                // Update status to 'Ready' and mark as printed to move to History
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
                 
                 await wixData.insert("ChatHistory", {
@@ -113,6 +114,7 @@ $w.onReady(function () {
             const list = await getAllStaff();
             dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
         }
+        
         if (d.type === "refreshKPIs") {
             const kpis = await getAdminKPIs();
             dashboard.postMessage({ type: "loadKPIs", data: kpis });
@@ -145,6 +147,7 @@ async function setupDashboard(user) {
     }
 
     if (refreshInterval) clearInterval(refreshInterval);
+    // Polling every 10 seconds for updates
     refreshInterval = setInterval(async () => {
         await loadOrders(currentDept, currentFilterDate);
     }, 10000);
@@ -154,47 +157,36 @@ function getStaffName() {
     return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff";
 }
 
+/**
+ * UPDATED: Removed the 24-hour restriction.
+ * Now fetches all orders for the department unless a specific date is selected.
+ */
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
     
-    let dayStart, dayEnd;
+    let query = wixData.query("PendingRequests").eq("requestType", department);
 
+    // Apply date filter ONLY if the user explicitly picked a date
     if (filterDateStr) {
         const selectedDate = new Date(filterDateStr);
-        dayStart = new Date(selectedDate);
+        const dayStart = new Date(selectedDate);
         dayStart.setHours(0, 0, 0, 0);
-        dayEnd = new Date(selectedDate);
+        const dayEnd = new Date(selectedDate);
         dayEnd.setHours(23, 59, 59, 999);
-    } else {
-        dayEnd = new Date();
-        dayStart = new Date();
-        dayStart.setHours(dayStart.getHours() - 24);
+        
+        query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     }
 
     try {
-        const activeQuery = wixData.query("PendingRequests")
-            .eq("requestType", department)
-            .ge("_createdDate", dayStart)
-            .le("_createdDate", dayEnd)
-            .eq("isPrinted", false)
-            .descending("_createdDate");
-
-        const historyQuery = wixData.query("PendingRequests")
-            .eq("requestType", department)
-            .ge("_createdDate", dayStart)
-            .le("_createdDate", dayEnd)
-            .eq("isPrinted", true)
-            .descending("_createdDate");
-
-        const [active, history] = await Promise.all([
-            activeQuery.find(),
-            historyQuery.find()
-        ]);
+        // Active Orders: Not yet printed/fulfilled
+        const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
+        // Recently Fulfilled: Marked as printed/fulfilled
+        const historyResults = await query.clone().eq("isPrinted", true).descending("_createdDate").limit(10).find();
 
         dashboard.postMessage({
             type: "updateOrders",
-            orders: active.items || [],
-            history: history.items || []
+            orders: activeResults.items || [],
+            history: historyResults.items || []
         });
     } catch (err) {
         console.error("Order load error:", err);
@@ -212,7 +204,6 @@ async function fetchAvailability(department) {
     }
 }
 
-// FIXED: Added missing function
 async function fetchActivityPrices() {
     const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
     if (priceData.items.length > 0) {
