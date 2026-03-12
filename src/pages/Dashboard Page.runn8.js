@@ -31,6 +31,7 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
+        // 1. SYSTEM HANDLERS
         if (d.type === "ready") {
             if (!loggedInStaff) {
                 dashboard.postMessage({ type: "showLogin" });
@@ -61,6 +62,54 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
+        // 2. STAFF MANAGEMENT HANDLERS (Moved inside loop)
+        if (d.type === "enrollStaff") {
+            try {
+                const result = await enrollStaff(d.staffData);
+                if (result) {
+                    dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
+                    const list = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+                }
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Registration failed: " + err.message });
+            }
+        }
+
+        if (d.type === "updateStaffInfo") {
+            try {
+                // Update roles via backend
+                const result = await updateStaffRoles(d.data.id, d.data.roles);
+                
+                if (result) {
+                    dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
+                    const list = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+                }
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Update failed: " + err.message });
+            }
+        }
+
+        if (d.type === "deleteStaff") {
+            try {
+                const result = await deleteStaff(d.id);
+                if (result) {
+                    dashboard.postMessage({ type: "alert", msg: "Staff member deleted." });
+                    const list = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+                }
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Deletion failed: " + err.message });
+            }
+        }
+
+        if (d.type === "getStaffList") {
+            const list = await getAllStaff();
+            dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+        }
+
+        // 3. ORDER & ANALYTICS HANDLERS
         if (d.type === "filter") {
             currentDept = d.department;
             currentFilterDate = d.date || null;
@@ -82,7 +131,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated." });
         }
 
-        if (d.type === "saveDriverInfo") {
+        if (d.type === "saveDriverRates") {
             try {
                 await saveDriverInfo(d.text);
                 dashboard.postMessage({ type: "alert", msg: "Royal Transport Rates Synced." });
@@ -94,7 +143,6 @@ $w.onReady(function () {
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
-                // Update status to 'Ready' and mark as printed to move to History
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
                 
                 await wixData.insert("ChatHistory", {
@@ -110,11 +158,6 @@ $w.onReady(function () {
             }
         }
 
-        if (d.type === "getStaffList") {
-            const list = await getAllStaff();
-            dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
-        }
-        
         if (d.type === "refreshKPIs") {
             const kpis = await getAdminKPIs();
             dashboard.postMessage({ type: "loadKPIs", data: kpis });
@@ -147,7 +190,6 @@ async function setupDashboard(user) {
     }
 
     if (refreshInterval) clearInterval(refreshInterval);
-    // Polling every 10 seconds for updates
     refreshInterval = setInterval(async () => {
         await loadOrders(currentDept, currentFilterDate);
     }, 10000);
@@ -157,30 +199,21 @@ function getStaffName() {
     return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff";
 }
 
-/**
- * UPDATED: Removed the 24-hour restriction.
- * Now fetches all orders for the department unless a specific date is selected.
- */
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
-    
     let query = wixData.query("PendingRequests").eq("requestType", department);
 
-    // Apply date filter ONLY if the user explicitly picked a date
     if (filterDateStr) {
         const selectedDate = new Date(filterDateStr);
         const dayStart = new Date(selectedDate);
         dayStart.setHours(0, 0, 0, 0);
         const dayEnd = new Date(selectedDate);
         dayEnd.setHours(23, 59, 59, 999);
-        
         query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     }
 
     try {
-        // Active Orders: Not yet printed/fulfilled
         const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
-        // Recently Fulfilled: Marked as printed/fulfilled
         const historyResults = await query.clone().eq("isPrinted", true).descending("_createdDate").limit(10).find();
 
         dashboard.postMessage({
