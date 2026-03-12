@@ -201,24 +201,32 @@ async function setupDashboard(user) {
 
 function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff"; }
 
+// Locate this function in your Page Code
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
+    
+    // Base query filtered by department
     let query = wixData.query("PendingRequests").eq("requestType", department);
     
-    if (filterDateStr) {
-        const selectedDate = new Date(filterDateStr);
-        const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
-        query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
-    }
+    // Time filter logic (last 24 hours or selected date)
+    const selectedDate = filterDateStr ? new Date(filterDateStr) : new Date();
+    const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
+    
+    // Ensure we are looking at the relevant timeframe
+    query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     
     try {
+        // ACTIVE: Keep this as is (only show unprinted in the top list)
         const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
-        const historyResults = await query.clone().eq("isPrinted", true).descending("_createdDate").limit(10).find();
         
-        // Map 'email' field from DB to 'clientEmail' for the HTML component
-        const activeItems = activeResults.items.map(item => ({...item, clientEmail: item.email}));
-        const historyItems = historyResults.items.map(item => ({...item, clientEmail: item.email}));
+        // RECENTLY FULFILLED (The Change): 
+        // Remove .eq("isPrinted", true) so it mirrors the KPI logic
+        const historyResults = await query.clone().descending("_createdDate").limit(10).find();
+        
+        // Map database fields for the HTML component
+        const activeItems = activeResults.items.map(o => ({ ...o, clientEmail: o.email }));
+        const historyItems = historyResults.items.map(o => ({ ...o, clientEmail: o.email }));
 
         dashboard.postMessage({ 
             type: "updateOrders", 
