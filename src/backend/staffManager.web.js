@@ -1,7 +1,9 @@
 import { Permissions, webMethod } from "wix-web-module";
 import wixData from 'wix-data';
 
-// Fetches all registered staff
+/**
+ * Fetches all registered staff for the Staff Directory in settings.
+ */
 export const getAllStaff = webMethod(Permissions.Anyone, async () => {
     try {
         return await wixData.query("StaffProfiles")
@@ -13,7 +15,9 @@ export const getAllStaff = webMethod(Permissions.Anyone, async () => {
     }
 });
 
-// Protected Deletion Logic
+/**
+ * Protected Deletion Logic: Prevents deletion of Master Admins.
+ */
 export const deleteStaff = webMethod(Permissions.Anyone, async (id) => {
     try {
         if (!id) throw new Error("No ID provided for deletion.");
@@ -33,9 +37,8 @@ export const deleteStaff = webMethod(Permissions.Anyone, async (id) => {
     }
 });
 
-
 /**
- * @description Updates the departments/roles assigned to a specific staff member.
+ * Updates the departments/roles assigned to a specific staff member.
  */
 export const updateStaffRoles = webMethod(Permissions.Anyone, async (id, roles) => {
     try {
@@ -55,7 +58,7 @@ export const updateStaffRoles = webMethod(Permissions.Anyone, async (id, roles) 
 });
 
 /**
- * @description Registers a new staff member or admin.
+ * Registers a new staff member or admin.
  */
 export const enrollStaff = webMethod(Permissions.Anyone, async (staffData) => {
     try {
@@ -83,12 +86,16 @@ export const enrollStaff = webMethod(Permissions.Anyone, async (staffData) => {
 });
 
 /**
- * @description Aggregates Key Performance Indicators for the Admin Dashboard.
+ * Aggregates Key Performance Indicators for the Admin Dashboard.
+ * Volume = Orders in last 24h | Score = Avg Rating | Reviews = Total Feedback count
  */
 export const getAdminKPIs = webMethod(Permissions.Anyone, async () => {
     try {
-        const [conversationCount, feedbackResults] = await Promise.all([
-            wixData.query("ChatHistory").count(),
+        const twentyFourHoursAgo = new Date();
+        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+        const [orderCount, feedbackResults] = await Promise.all([
+            wixData.query("PendingRequests").ge("_createdDate", twentyFourHoursAgo).count(),
             wixData.query("ConciergeFeedback").limit(1000).find({ suppressAuth: true })
         ]);
         
@@ -97,9 +104,9 @@ export const getAdminKPIs = webMethod(Permissions.Anyone, async () => {
         const avgRating = feedbackCount > 0 ? (totalRating / feedbackCount).toFixed(1) : "0.0";
 
         return {
-            totalConversations: conversationCount,
-            averageRating: avgRating,
-            totalFeedback: feedbackCount
+            totalConversations: orderCount, // Displayed as 'Volume'
+            averageRating: avgRating,      // Displayed as 'Score'
+            totalFeedback: feedbackCount   // Displayed as 'Reviews'
         };
     } catch (err) {
         console.error("KPI Retrieval failed:", err.message);
@@ -108,7 +115,7 @@ export const getAdminKPIs = webMethod(Permissions.Anyone, async () => {
 });
 
 /**
- * @description Saves/Updates the driver availability text for the AI model context.
+ * Saves/Updates the Royal Transport rates for the AI model context.
  */
 export const saveDriverInfo = webMethod(Permissions.Anyone, async (text) => {
     try {
@@ -118,7 +125,8 @@ export const saveDriverInfo = webMethod(Permissions.Anyone, async (text) => {
 
         const toSave = { 
             "title": "DriverInfo", 
-            "unavailableText": text 
+            "unavailableText": text,
+            "lastUpdated": new Date()
         };
 
         if (results.items.length > 0) {
