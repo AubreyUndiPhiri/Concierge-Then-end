@@ -6,7 +6,7 @@ import wixPayBackend from 'wix-pay-backend';
 
 /**
  * Helper: Creates a pending request in the database.
- * UPDATED: Now accepts totalAmount to store with the record.
+ * ALIGNED: Uses 'orderTotal' and ensures numeric format for Dashboard KPIs.
  */
 async function createPendingRequest(roomNumber, roomName, department, details, guestMsg, totalAmount = "0") {
     const requestData = {
@@ -16,7 +16,7 @@ async function createPendingRequest(roomNumber, roomName, department, details, g
         requestType: department,
         details: details,
         fullContext: guestMsg, 
-        totalAmount: totalAmount, // Stores the calculated total for the department to see
+        orderTotal: Number(totalAmount), // Numeric type for Dashboard calculation
         status: "Pending Verification",
         timestamp: new Date(),
         isPrinted: false
@@ -32,36 +32,15 @@ async function createPendingRequest(roomNumber, roomName, department, details, g
 }
 
 /**
- * Generates a payment session for specific activities.
- */
-export const createActivityPayment = webMethod(
-    Permissions.Anyone,
-    async (activityName, price, guestName = "Lodge Guest") => {
-        const paymentInfo = {
-            amount: price,
-            items: [{ name: activityName, price: price }],
-            userInfo: { firstName: guestName }
-        };
-        try {
-            return await wixPayBackend.createPayment(paymentInfo);
-        } catch (err) {
-            console.error("Payment creation error:", err.message);
-            return null;
-        }
-    }
-);
-
-/**
  * askAI - Royal Concierge Service
  */
 export const askAI = webMethod(
     Permissions.Anyone,
     async (userMessage, roomNumber, chatHistory = []) => {
         const hfToken = await getSecret("HF_TOKEN");
-
         if (!hfToken) return "The AI concierge is currently offline.";
 
-        // 1. FETCH AVAILABILITY, PRICE, AND DRIVER UPDATES FROM DATABASE
+        // 1. FETCH DYNAMIC CONTEXT (Availability, Prices, Drivers)
         let availabilityContext = "";
         let priceContext = "";
         let driverContext = "";
@@ -83,9 +62,7 @@ export const askAI = webMethod(
                     }
                 });
             }
-        } catch (err) { 
-            console.error("Database sync failed:", err); 
-        }
+        } catch (err) { console.error("Database sync failed:", err); }
 
         // 2. DEFINE ROOM GREETING DATA (ZAMBIAN TRADITION)
         const roomData = {
@@ -106,55 +83,46 @@ export const askAI = webMethod(
 
         const lodgeKnowledgeBase = `
 PROPERTY: NKHOSI LIVINGSTONE LODGE & SPA.
-LOCATION: Eco-friendly, solar-powered luxury eco-resort in Mukuni Village, Livingstone, Zambia.
+LOCATION: Eco-resort in Mukuni Village, Livingstone, Zambia. Solar-powered and luxury-focused.
 
 I. SPA & WELLNESS:
-- Massages: Full Body (**K1300**/60m), Deep Tissue (**K1300**/60m), Hot Stone (**K1400**/90m), Ukuchina (Zambian Traditional) (**K1400**/90m), Soul Of Livingstone (**K1400**/90m), Back, Neck & Shoulder (**K950**/30m), Foot Massage (**K750**/20m).
-- Beauty: Manicure (**K750** standard / **K850** gel), Pedicure (**K750** standard / **K850** gel), Gel Overlay (**K700**), Deep Cleansing Facial (**K1550**).
+Massages: Full Body (**K1300**), Deep Tissue (**K1300**), Hot Stone (**K1400**), Ukuchina Zambian Trad (**K1400**).
+Beauty: Manicure (**K750**), Pedicure (**K750**), Facial (**K1550**).
 
-II. DINNER COLLECTION:
-- Main Meals: Village Chicken Stew (**K270**), African Chicken Ifisashi (**K275**), Signature Whole Zambezi Bream (**K245**).
+II. DINNER:
+Village Chicken Stew (**K270**), Zambezi Bream (**K245**), Chicken Ifisashi (**K275**).
 
 III. ACTIVITIES:
-- Victoria Falls: Guided Falls Tours, Livingstone Island & Devil’s Pool (Seasonal).
-- River: Sunset Cruises (**$85**), Canoeing, Fishing.
+Sunset Cruises (**$85**), Guided Falls Tours, Canoeing.
         `.trim();
 
+        // 3. ORGANIZED SYSTEM PROMPT
         const systemPrompt = `
-Your name is Nkhosi. You are the professional Concierge for Nkhosi Livingstone Lodge & SPA.
+### IDENTITY & ROLE
+Your name is Nkhosi, the professional Royal Concierge for Nkhosi Livingstone Lodge & SPA. You are grounded, sophisticated, and authentically Zambian.
 
-AVAILABILITY, PRICING & TRANSPORT LOGIC:
-${priceContext || "Use standard pricing from Knowledge Base."}
-${availabilityContext || "All services are available."}
-${driverContext || "Refer transport inquiries to the front desk."}
+### CURRENT STATUS & LIVE UPDATES
+- **Availability:** ${availabilityContext || "All services are fully available today."}
+- **Special Pricing:** ${priceContext || "Follow standard Knowledge Base prices."}
+- **Transport:** ${driverContext || "Advise guests to contact the front desk for transport."}
 
-STYLE & TONE:
-      - Sophisticated, grounded, and deeply helpful.
-      - Speak as an authentic member of the lodge staff.
-      - GREETING PROTOCOL: When you receive a [SYSTEM] trigger, respond with a single warm paragraph dont mention anything on the menu. Start with "${roomInfo.greet}" and welcome them to the **${roomInfo.name}** room. Aks the guest their name and tell them that you can help them with resturant reservation, activities, Spa reservations and give you details for available drivers.
+### GREETING PROTOCOL
+- Always start the conversation with "${roomInfo.greet}".
+- Welcome them specifically to the **${roomInfo.name}** room.
+- Ask for their name if not known.
 
-PROTOCOL: 
-- If 'ROYAL DRIVER DIRECTORY' is provided above, use that specific list for all transport/taxi inquiries.
-- If 'UPDATED ACTIVITY PRICES' is provided above, you MUST prioritize those prices over the Knowledge Base.
-- If a guest asks for something marked as UNAVAILABLE, apologize politely and suggest a similar available alternative.
+### BOOKING & TRANSACTION RULES
+1. **Mandatory Info:** You must confirm the Guest Name and Preferred Time before initiating checkout.
+2. **Formatting:** Bold all currency values (e.g., **K1400** or **$85**).
+3. **Receipt Generation:** Before finalizing, list every item selected with its price and a calculated TOTAL.
+4. **Checkout Trigger:** Once the guest says "Yes" or confirms the receipt, you MUST append this tag to the end of your message: [ACTION:TRIGGER_CHECKOUT|TOTAL_NUMBER]
+   - *Example:* "Your order is confirmed. [ACTION:TRIGGER_CHECKOUT|1545]"
 
-CONVERSATIONAL GUIDELINES:
-1. GREETING: Start with "${roomInfo.greet}" and welcome them to the **${roomInfo.name}** room. 
-2. STYLE: Professional, welcoming, and helpful. Keep responses concise.
+### CONTEXTUAL GUIDELINES
+- If an item is UNAVAILABLE, offer a similar alternative.
+- Keep responses concise and helpful.
 
- BOOKING PROTOCOL:
-      1. Mandatory Info: Before confirming, you MUST have the guest's name and their preferred time.
-      2. Department Detection: 
-         - Use "Kitchen" for food orders.
-         - Use "Spa" for massages or beauty treatments.
-         - Use "Activities" for tours and falls visits.
-         When the order is confirmed by the guest make sure that the receipt of the full order and the respective prices and items is sent to the admin and staff dashboards respectively depending on the department so that they can as well see the items in the recent orders or history orders.
-      3. ACCURACY: Always bold prices using the currency provided (e.g. **K250** or **$85**).
-      4. RECEIPT GENERATION: When the guest picks items, list them back with individual prices and a calculated TOTAL (e.g., "1x Bream (**K245**), 1x Massage (**K1300**) - Total: **K1545**"). Then pass that total in the checkout so that it correctly shows the amount of money they are supposed to pay for in the checkout as well.
-      5. CHECKOUT SYNC: ONLY after the guest confirms details, append the trigger including the total numeric amount like this: [ACTION:TRIGGER_CHECKOUT|1545]. Use only the numeric value for the amount.
-    
-
-KNOWLEDGE BASE:
+### KNOWLEDGE BASE
 ${lodgeKnowledgeBase}
         `.trim();
 
@@ -178,41 +146,48 @@ ${lodgeKnowledgeBase}
             });
 
             const result = await response.json();
-            const aiResponse = result.choices?.[0]?.message?.content?.trim() || "I apologize, mwane. I am having trouble processing that request right now.";
+            const aiResponse = result.choices?.[0]?.message?.content?.trim() || "I apologize, mwane. I am having trouble connecting.";
 
-            // LOG TO CHAT HISTORY FOR ADMIN KPIs
+            // Log to Chat History
             wixData.insert("ChatHistory", {
-                userMessage: userMessage,
-                aiResponse: aiResponse,
+                userMessage,
+                aiResponse,
                 roomNumber: sanitizedRoom,
                 roomName: roomInfo.name,
                 timestamp: new Date()
-            }, { suppressAuth: true }).catch(e => console.error("History log failed"));
+            }, { suppressAuth: true }).catch(e => {});
 
-            // CHECKOUT TRIGGER LOGIC & DEPARTMENT ROUTING
-            if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT]")) {
-                // Extract amount from tag [ACTION:TRIGGER_CHECKOUT|1545]
-                const parts = aiResponse.split("|");
-                const amount = parts.length > 1 ? parts[1].replace("]", "") : "0";
+            // 4. ACTION TRIGGER & DEPARTMENT ROUTING
+            if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT")) {
+                // Regex to capture the number regardless of trailing brackets
+                const amountMatch = aiResponse.match(/TRIGGER_CHECKOUT\|(\d+)/);
+                const amount = amountMatch ? amountMatch[1] : "0";
 
                 const msg = userMessage.toLowerCase();
                 let dept = "Activities"; 
 
-                if (msg.includes("steak") || msg.includes("chicken") || msg.includes("bream") || msg.includes("food") || msg.includes("burger") || msg.includes("nshima") || msg.includes("order") || msg.includes("dinner") || msg.includes("lunch")) {
+                // Sophisticated keyword routing
+                if (msg.match(/food|order|dinner|lunch|chicken|bream|nshima|eat|kitchen|stew/)) {
                     dept = "Kitchen";
-                } else if (msg.includes("massage") || msg.includes("spa") || msg.includes("facial") || msg.includes("manicure") || msg.includes("treatment") || msg.includes("pedicure")) {
+                } else if (msg.match(/massage|spa|facial|pedicure|manicure|treatment|beauty/)) {
                     dept = "Spa";
                 }
                 
-                // Pass the extracted amount to the database record
-                await createPendingRequest(sanitizedRoom, roomInfo.name, dept, "Guest initiating secure checkout", aiResponse, amount);
+                await createPendingRequest(
+                    sanitizedRoom, 
+                    roomInfo.name, 
+                    dept, 
+                    "Guest initiating secure checkout", 
+                    aiResponse, 
+                    amount
+                );
             }
 
             return aiResponse;
 
         } catch (err) {
-            console.error("HF Fetch Error:", err);
-            return "I apologize, but I am having trouble connecting to the royal network. Please call reception at +260978178820.";
+            console.error("askAI Error:", err);
+            return "I apologize, but I am having trouble connecting. Please call reception at +260978178820.";
         }
     }
 );
