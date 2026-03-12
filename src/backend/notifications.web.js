@@ -10,12 +10,13 @@ export async function notifyDepartmentOfNewOrder(orderItem) {
 
     try {
         // 1. Find staff members with the matching role (Kitchen, Spa, Drivers, or Activities)
+        // Standardized to match the 'Drivers' naming convention
         const staffResults = await wixData.query("StaffProfiles")
             .hasSome("roles", [requestType])
             .find({ suppressAuth: true });
 
         if (staffResults.items.length === 0) {
-            console.warn(`No staff members found for department: ${requestType}`);
+            console.warn(`⚠️ No staff members found for department: ${requestType}`);
             return;
         }
 
@@ -23,15 +24,15 @@ export async function notifyDepartmentOfNewOrder(orderItem) {
         const emailPromises = staffResults.items.map(async (staff) => {
             const contactId = await getOrCreateContactId(staff.email);
             
-            // Note: 'VDV45yE' is your specific Triggered Email Template ID
+            // 'VDV45yE' template must have these 6 variables defined in Wix CRM
             return triggeredEmails.emailContact('VDV45yE', contactId, {
                 variables: {
                     department: requestType,
                     roomNumber: String(roomNumber),
                     roomName: roomName || "Guest Room",
                     guestName: clientName || "Valued Guest",
-                    orderDetails: details,
-                    totalAmount: `K ${String(orderTotal)}`
+                    orderDetails: details || "New order placed via AI Concierge",
+                    totalAmount: `K ${String(orderTotal || 0)}`
                 }
             });
         });
@@ -48,12 +49,14 @@ export async function notifyDepartmentOfNewOrder(orderItem) {
  */
 async function getOrCreateContactId(email) {
     try {
+        // Search by email in Wix Contacts
         const search = await contacts.queryContacts()
             .eq("info.emails.email", email)
             .find();
             
         if (search.items.length > 0) return search.items[0]._id;
         
+        // If not found, create a new contact so we can email them
         const newContact = await contacts.createContact({
             info: { 
                 emails: [{ email, tag: "STAFF" }] 
