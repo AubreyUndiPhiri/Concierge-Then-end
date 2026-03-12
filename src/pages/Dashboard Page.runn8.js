@@ -31,7 +31,7 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
-        // --- 1. SYSTEM & AUTH HANDLERS ---
+        // AUTH & READY HANDLERS
         if (d.type === "ready") {
             if (!loggedInStaff) {
                 dashboard.postMessage({ type: "showLogin" });
@@ -62,13 +62,13 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // --- 2. STAFF MANAGEMENT HANDLERS (CRITICAL FIXES) ---
+        // STAFF MANAGEMENT HANDLERS (THE BRIDGE)
         if (d.type === "enrollStaff") {
             try {
                 const result = await enrollStaff(d.staffData);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
-                    const list = await getAllStaff(); // Refresh list immediately
+                    const list = await getAllStaff(); // Refresh the list for the HTML
                     dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
                 }
             } catch (err) {
@@ -78,11 +78,10 @@ $w.onReady(function () {
 
         if (d.type === "updateStaffInfo") {
             try {
-                // Bridge to backend/staffManager.web.js
                 const result = await updateStaffRoles(d.data.id, d.data.roles);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
-                    const list = await getAllStaff(); // Refresh list immediately
+                    const list = await getAllStaff(); // Refresh the list for the HTML
                     dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
                 }
             } catch (err) {
@@ -95,7 +94,7 @@ $w.onReady(function () {
                 const result = await deleteStaff(d.id);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "Staff member deleted." });
-                    const list = await getAllStaff(); // Refresh list immediately
+                    const list = await getAllStaff(); // Refresh the list for the HTML
                     dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
                 }
             } catch (err) {
@@ -108,7 +107,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
         }
 
-        // --- 3. DATA & ANALYTICS HANDLERS ---
+        // DATA HANDLERS
         if (d.type === "filter") {
             currentDept = d.department;
             currentFilterDate = d.date || null;
@@ -130,7 +129,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated." });
         }
 
-        if (d.type === "saveDriverRates") {
+        if (d.type === "saveDriverInfo") {
             try {
                 await saveDriverInfo(d.text);
                 dashboard.postMessage({ type: "alert", msg: "Royal Transport Rates Synced." });
@@ -143,14 +142,6 @@ $w.onReady(function () {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
-                
-                await wixData.insert("ChatHistory", {
-                    userMessage: "[SYSTEM_ACTION: NOTIFY_READY]",
-                    aiResponse: `Mwaiseni! Your ${d.dept} request is now ready.`,
-                    roomNumber: String(d.room),
-                    timestamp: new Date()
-                }, { suppressAuth: true });
-                
                 await loadOrders(currentDept, currentFilterDate);
             } catch (err) {
                 console.error("Fulfillment failed:", err);
@@ -165,92 +156,54 @@ $w.onReady(function () {
     });
 });
 
-/** --- HELPER FUNCTIONS --- **/
-
 async function setupDashboard(user) {
     const formattedUser = formatUser(user);
     const isAdmin = (formattedUser.roles || []).some(role => role.toLowerCase() === "admin");
-
-    dashboard.postMessage({
-        type: "setUser",
-        user: formattedUser,
-        isAdmin: isAdmin
-    });
-
+    dashboard.postMessage({ type: "setUser", user: formattedUser, isAdmin: isAdmin });
     currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
     currentFilterDate = null;
-    
     await loadOrders(currentDept);
     await fetchAvailability(currentDept);
-
     if (isAdmin) {
         const kpis = await getAdminKPIs();
         dashboard.postMessage({ type: "loadKPIs", data: kpis });
     }
-
     if (refreshInterval) clearInterval(refreshInterval);
-    refreshInterval = setInterval(async () => {
-        await loadOrders(currentDept, currentFilterDate);
-    }, 10000);
+    refreshInterval = setInterval(async () => { await loadOrders(currentDept, currentFilterDate); }, 10000);
 }
 
-function getStaffName() {
-    return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff";
-}
+function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff"; }
 
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
     let query = wixData.query("PendingRequests").eq("requestType", department);
-
     if (filterDateStr) {
         const selectedDate = new Date(filterDateStr);
-        const dayStart = new Date(selectedDate);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(selectedDate);
-        dayEnd.setHours(23, 59, 59, 999);
+        const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
         query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     }
-
     try {
         const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
         const historyResults = await query.clone().eq("isPrinted", true).descending("_createdDate").limit(10).find();
-
-        dashboard.postMessage({
-            type: "updateOrders",
-            orders: activeResults.items || [],
-            history: historyResults.items || []
-        });
-    } catch (err) {
-        console.error("Order load error:", err);
-    }
+        dashboard.postMessage({ type: "updateOrders", orders: activeResults.items || [], history: historyResults.items || [] });
+    } catch (err) { console.error("Order load error:", err); }
 }
 
 async function fetchAvailability(department) {
     const settingsTitle = department === "Kitchen" ? "DailyAvailability" : `${department}Availability`;
     const results = await wixData.query("LodgeSettings").eq("title", settingsTitle).find();
-    if (results.items.length > 0) {
-        dashboard.postMessage({
-            type: "loadAvailability",
-            text: results.items[0].unavailableText || ""
-        });
-    }
+    if (results.items.length > 0) { dashboard.postMessage({ type: "loadAvailability", text: results.items[0].unavailableText || "" }); }
 }
 
 async function fetchActivityPrices() {
     const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
-    if (priceData.items.length > 0) {
-        dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText });
-    }
+    if (priceData.items.length > 0) { dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText }); }
 }
 
 async function fetchDriverRates() {
     const res = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
-    if (res.items.length > 0) {
-        dashboard.postMessage({
-            type: "loadDrivers",
-            text: res.items[0].unavailableText || ""
-        });
-    }
+    if (res.items.length > 0) { dashboard.postMessage({ type: "loadDrivers", text: res.items[0].unavailableText || "" }); }
 }
 
 async function saveLodgeSettings(title, text, staffName) {
@@ -259,14 +212,9 @@ async function saveLodgeSettings(title, text, staffName) {
         const toSave = { title, unavailableText: text, lastUpdatedBy: staffName };
         if (results.items.length > 0) toSave._id = results.items[0]._id;
         return await wixData.save("LodgeSettings", toSave);
-    } catch (err) {
-        console.error("Settings save error:", err);
-    }
+    } catch (err) { console.error("Settings save error:", err); }
 }
 
 function formatUser(user) {
-    return {
-        ...user,
-        roles: (user.roles || []).map(r => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase())
-    };
+    return { ...user, roles: (user.roles || []).map(r => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()) };
 }
