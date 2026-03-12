@@ -14,6 +14,7 @@ let dashboard;
 let currentDept = "";
 let loggedInStaff = null;
 let refreshInterval;
+let currentFilterDate = null; // Stores the active date filter
 
 $w.onReady(function () {
     dashboard = $w("#html1");
@@ -60,13 +61,15 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // --- DYNAMIC DATA SYNC (Drivers, Kitchen, Spa) ---
+        // --- DYNAMIC DATA SYNC & FILTERING ---
         if (d.type === "filter") {
             currentDept = d.department;
-            await loadOrders(currentDept);
+            currentFilterDate = d.date || null; // Update the date state from the UI picker
+            
+            await loadOrders(currentDept, currentFilterDate);
             await fetchAvailability(currentDept);
+            
             if (currentDept === "Activities") await fetchActivityPrices();
-            // NEW: Fetch specific transport rates when on Drivers tab
             if (currentDept === "Drivers") await fetchDriverRates();
         }
 
@@ -79,13 +82,12 @@ $w.onReady(function () {
 
         if (d.type === "saveActivityPrices") {
             await saveLodgeSettings("ActivitiesPrices", d.text, getStaffName());
-            dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated (USD $)" });
+            dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated." });
         }
 
-        // NEW: Specific Handler for Driver Rates (Location Pricing)
         if (d.type === "saveDriverInfo") {
             try {
-                await saveDriverInfo(d.text); // backend/staffManager function
+                await saveDriverInfo(d.text);
                 dashboard.postMessage({ type: "alert", msg: "Royal Transport Rates Synced." });
             } catch (err) {
                 dashboard.postMessage({ type: "alert", msg: "Driver rate sync failed." });
@@ -95,7 +97,6 @@ $w.onReady(function () {
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
-                // Mark as Ready and move to history by flipping isPrinted
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
                 
                 await wixData.insert("ChatHistory", {
@@ -105,13 +106,14 @@ $w.onReady(function () {
                     timestamp: new Date()
                 }, { suppressAuth: true });
                 
-                await loadOrders(currentDept);
+                // Refresh list using current filters
+                await loadOrders(currentDept, currentFilterDate);
             } catch (err) {
                 console.error("Fulfillment failed:", err);
             }
         }
 
-        // --- STAFF MANAGEMENT ---
+        // --- ADMIN & STAFF LIST ---
         if (d.type === "getStaffList") {
             const list = await getAllStaff();
             dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
@@ -137,6 +139,8 @@ async function setupDashboard(user) {
     });
 
     currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
+    currentFilterDate = null; // Default to today/last 24h on fresh login
+    
     await loadOrders(currentDept);
     await fetchAvailability(currentDept);
 
@@ -147,7 +151,8 @@ async function setupDashboard(user) {
 
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(async () => {
-        await loadOrders(currentDept);
+        // Polling loop respects the current date filter
+        await loadOrders(currentDept, currentFilterDate);
     }, 10000);
 }
 
@@ -155,21 +160,39 @@ function getStaffName() {
     return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff";
 }
 
-async function loadOrders(department) {
+/**
+ * UPDATED: Optimized to handle specific Date Filters or 24-hour Rolling Window
+ */
+async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
     
-    // BROADENED WINDOW: Show orders from last 24 hours to handle late-night shift crossovers
-    const cutoff = new Date();
-    cutoff.setHours(cutoff.getHours() - 24);
+    let dayStart, dayEnd;
+
+    if (filterDateStr) {
+        // SCENARIO A: User picked a specific date
+        const selectedDate = new Date(filterDateStr);
+        dayStart = new Date(selectedDate);
+        dayStart.setHours(0, 0, 0, 0);
+        
+        dayEnd = new Date(selectedDate);
+        dayEnd.setHours(23, 59, 59, 999);
+    } else {
+        // SCENARIO B: Default view (Last 24 Hours)
+        dayEnd = new Date();
+        dayStart = new Date();
+        dayStart.setHours(dayStart.getHours() - 24);
+    }
 
     try {
         const query = wixData.query("PendingRequests")
             .eq("requestType", department)
-            .ge("_createdDate", cutoff);
+            .ge("_createdDate", dayStart)
+            .le("_createdDate", dayEnd);
 
+        // Fetch both Active (Unprinted) and History (Printed) for the chosen window
         const [active, history] = await Promise.all([
             query.clone().eq("isPrinted", false).descending("_createdDate").find(),
-            query.clone().eq("isPrinted", true).limit(10).descending("_createdDate").find()
+            query.clone().eq("isPrinted", true).descending("_createdDate").find()
         ]);
 
         dashboard.postMessage({
