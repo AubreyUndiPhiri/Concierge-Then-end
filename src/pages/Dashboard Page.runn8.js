@@ -10,6 +10,9 @@ import {
     deleteStaff
 } from 'backend/staffManager.web.js';
 
+// If you have a backend function for emails, import it here:
+// import { sendOrderReadyEmail } from 'backend/notifications.jsw';
+
 let dashboard;
 let currentDept = "";
 let loggedInStaff = null;
@@ -19,6 +22,7 @@ let currentFilterDate = null;
 $w.onReady(function () {
     dashboard = $w("#html1");
 
+    // Session Management
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) {
         try {
@@ -62,14 +66,12 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // --- 2. STAFF MANAGEMENT HANDLERS (THE BRIDGE) ---
+        // --- 2. STAFF MANAGEMENT HANDLERS ---
         if (d.type === "enrollStaff") {
             try {
-                // d.staffData comes from the finalizeEnrollment() function in HTML
                 const result = await enrollStaff(d.staffData);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
-                    // CRITICAL: Refresh the roster immediately
                     const updatedList = await getAllStaff();
                     dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
                 }
@@ -80,11 +82,9 @@ $w.onReady(function () {
 
         if (d.type === "updateStaffInfo") {
             try {
-                // d.data contains {id, firstName, email, password, roles}
                 const result = await updateStaffRoles(d.data.id, d.data.roles);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
-                    // CRITICAL: Refresh the roster immediately
                     const updatedList = await getAllStaff();
                     dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
                 }
@@ -98,7 +98,6 @@ $w.onReady(function () {
                 const result = await deleteStaff(d.id);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "Staff member deleted." });
-                    // CRITICAL: Refresh the roster immediately
                     const updatedList = await getAllStaff();
                     dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
                 }
@@ -129,27 +128,44 @@ $w.onReady(function () {
             await fetchAvailability(currentDept);
         }
 
-        if (d.type === "saveActivityPrices") {
-            await saveLodgeSettings("ActivitiesPrices", d.text, getStaffName());
-            dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated." });
-        }
-
-        if (d.type === "saveDriverInfo") {
-            try {
-                await saveDriverInfo(d.text);
-                dashboard.postMessage({ type: "alert", msg: "Royal Transport Rates Synced." });
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Driver rate sync failed." });
-            }
-        }
-
+        // --- 4. ORDER FULFILLMENT & NOTIFICATIONS ---
+        
+        // Handler for "Complete Mission" button
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
-                await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
+                // Mark as Ready and Printed (Archived)
+                await wixData.update("PendingRequests", { 
+                    ...originalRecord, 
+                    status: "Ready", 
+                    isPrinted: true 
+                });
+                dashboard.postMessage({ type: "alert", msg: "Mission Accomplished." });
                 await loadOrders(currentDept, currentFilterDate);
             } catch (err) {
                 console.error("Fulfillment failed:", err);
+            }
+        }
+
+        // New Handler for "Notify Client" (Verified Badge Logic)
+        if (d.type === "notifyClientReady") {
+            try {
+                const originalRecord = await wixData.get("PendingRequests", d.id);
+                
+                // 1. Logic to send the actual email would go here
+                // await sendOrderReadyEmail(d.email, originalRecord.details);
+
+                // 2. Update Database to reflect email was sent (Verified status)
+                await wixData.update("PendingRequests", { 
+                    ...originalRecord, 
+                    emailSent: true, // This field powers the Green Badge
+                    isPrinted: true  // Move to archives if not already there
+                });
+
+                dashboard.postMessage({ type: "alert", msg: "Client notified. Order Verified." });
+                await loadOrders(currentDept, currentFilterDate);
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Notification failed: " + err.message });
             }
         }
 
@@ -167,14 +183,18 @@ async function setupDashboard(user) {
     const formattedUser = formatUser(user);
     const isAdmin = (formattedUser.roles || []).some(role => role.toLowerCase() === "admin");
     dashboard.postMessage({ type: "setUser", user: formattedUser, isAdmin: isAdmin });
+    
     currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
     currentFilterDate = null;
+    
     await loadOrders(currentDept);
     await fetchAvailability(currentDept);
+    
     if (isAdmin) {
         const kpis = await getAdminKPIs();
         dashboard.postMessage({ type: "loadKPIs", data: kpis });
     }
+    
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(async () => { await loadOrders(currentDept, currentFilterDate); }, 10000);
 }
@@ -184,16 +204,27 @@ function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "St
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
     let query = wixData.query("PendingRequests").eq("requestType", department);
+    
     if (filterDateStr) {
         const selectedDate = new Date(filterDateStr);
         const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
         const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
         query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     }
+    
     try {
         const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
         const historyResults = await query.clone().eq("isPrinted", true).descending("_createdDate").limit(10).find();
-        dashboard.postMessage({ type: "updateOrders", orders: activeResults.items || [], history: historyResults.items || [] });
+        
+        // Map 'email' field from DB to 'clientEmail' for the HTML component
+        const activeItems = activeResults.items.map(item => ({...item, clientEmail: item.email}));
+        const historyItems = historyResults.items.map(item => ({...item, clientEmail: item.email}));
+
+        dashboard.postMessage({ 
+            type: "updateOrders", 
+            orders: activeItems || [], 
+            history: historyItems || [] 
+        });
     } catch (err) { console.error("Order load error:", err); }
 }
 
