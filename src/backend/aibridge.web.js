@@ -35,7 +35,7 @@ async function createPendingRequest(roomNumber, roomName, department, details, g
         roomNumber: String(roomNumber),
         roomName: roomName,
         requestType: department,
-        details: details,
+        details: details, // Now contains specific items/prices extracted from AI response
         fullContext: guestMsg, 
         orderTotal: Number(totalAmount),
         status: "Pending Verification",
@@ -105,7 +105,7 @@ export const askAI = webMethod(
         const sanitizedRoom = roomNumber ? String(roomNumber) : "General";
         const roomInfo = roomData[sanitizedRoom] || { name: "Valued Guest", greet: "Greetings" };
 
-        // 3. ORGANIZED SYSTEM PROMPT (SECTIONS)
+        // 3. ORGANIZED SYSTEM PROMPT
         const systemPrompt = `
 ### IDENTITY
 Your name is Nkhosi, the Royal Concierge for Nkhosi Livingstone Lodge & SPA. You are sophisticated and authentically Zambian.
@@ -146,15 +146,21 @@ ${getLodgeMenu()}
 
             // 4. ACTION PROCESSING & ROUTING
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT")) {
-                const amount = (aiResponse.match(/\|(\d+)/) || [null, "0"])[1];
-                const msg = userMessage.toLowerCase();
+                const amountMatch = aiResponse.match(/TRIGGER_CHECKOUT\|(\d+)/);
+                const amount = amountMatch ? amountMatch[1] : "0";
                 
+                // NEW: Extract items and prices from the AI response to show in emails/dashboard
+                // This removes the system tag [ACTION:...] and leaves just the text summary
+                const cleanDetails = aiResponse.replace(/\[ACTION:TRIGGER_CHECKOUT\|(\d+)\]/g, "").trim();
+
+                const msg = userMessage.toLowerCase();
                 let dept = "Activities";
                 if (msg.match(/food|dinner|lunch|chicken|bream|kitchen/)) dept = "Kitchen";
                 else if (msg.match(/massage|spa|facial|beauty/)) dept = "Spa";
                 else if (msg.match(/taxi|driver|transport|airport|ride/)) dept = "Drivers";
 
-                await createPendingRequest(sanitizedRoom, roomInfo.name, dept, "AI-Generated Order", aiResponse, amount);
+                // Save cleanDetails instead of "AI-Generated Order"
+                await createPendingRequest(sanitizedRoom, roomInfo.name, dept, cleanDetails, aiResponse, amount);
             }
 
             return aiResponse;
