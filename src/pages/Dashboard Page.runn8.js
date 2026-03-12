@@ -14,7 +14,7 @@ let dashboard;
 let currentDept = "";
 let loggedInStaff = null;
 let refreshInterval;
-let currentFilterDate = null; // Stores the active date filter
+let currentFilterDate = null; 
 
 $w.onReady(function () {
     dashboard = $w("#html1");
@@ -61,14 +61,11 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // --- DYNAMIC DATA SYNC & FILTERING ---
         if (d.type === "filter") {
             currentDept = d.department;
-            currentFilterDate = d.date || null; // Update the date state from the UI picker
-            
+            currentFilterDate = d.date || null;
             await loadOrders(currentDept, currentFilterDate);
             await fetchAvailability(currentDept);
-            
             if (currentDept === "Activities") await fetchActivityPrices();
             if (currentDept === "Drivers") await fetchDriverRates();
         }
@@ -106,14 +103,12 @@ $w.onReady(function () {
                     timestamp: new Date()
                 }, { suppressAuth: true });
                 
-                // Refresh list using current filters
                 await loadOrders(currentDept, currentFilterDate);
             } catch (err) {
                 console.error("Fulfillment failed:", err);
             }
         }
 
-        // --- ADMIN & STAFF LIST ---
         if (d.type === "getStaffList") {
             const list = await getAllStaff();
             dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
@@ -139,7 +134,7 @@ async function setupDashboard(user) {
     });
 
     currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
-    currentFilterDate = null; // Default to today/last 24h on fresh login
+    currentFilterDate = null;
     
     await loadOrders(currentDept);
     await fetchAvailability(currentDept);
@@ -151,7 +146,6 @@ async function setupDashboard(user) {
 
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(async () => {
-        // Polling loop respects the current date filter
         await loadOrders(currentDept, currentFilterDate);
     }, 10000);
 }
@@ -161,7 +155,8 @@ function getStaffName() {
 }
 
 /**
- * UPDATED: Optimized to handle specific Date Filters or 24-hour Rolling Window
+ * FIXED: Removed .clone() to prevent TypeError. 
+ * Defines queries explicitly for Active and History lists.
  */
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
@@ -169,30 +164,36 @@ async function loadOrders(department, filterDateStr = null) {
     let dayStart, dayEnd;
 
     if (filterDateStr) {
-        // SCENARIO A: User picked a specific date
         const selectedDate = new Date(filterDateStr);
         dayStart = new Date(selectedDate);
         dayStart.setHours(0, 0, 0, 0);
-        
         dayEnd = new Date(selectedDate);
         dayEnd.setHours(23, 59, 59, 999);
     } else {
-        // SCENARIO B: Default view (Last 24 Hours)
         dayEnd = new Date();
         dayStart = new Date();
         dayStart.setHours(dayStart.getHours() - 24);
     }
 
     try {
-        const query = wixData.query("PendingRequests")
+        // Explicitly defining queries instead of using .clone()
+        const activeQuery = wixData.query("PendingRequests")
             .eq("requestType", department)
             .ge("_createdDate", dayStart)
-            .le("_createdDate", dayEnd);
+            .le("_createdDate", dayEnd)
+            .eq("isPrinted", false)
+            .descending("_createdDate");
 
-        // Fetch both Active (Unprinted) and History (Printed) for the chosen window
+        const historyQuery = wixData.query("PendingRequests")
+            .eq("requestType", department)
+            .ge("_createdDate", dayStart)
+            .le("_createdDate", dayEnd)
+            .eq("isPrinted", true)
+            .descending("_createdDate");
+
         const [active, history] = await Promise.all([
-            query.clone().eq("isPrinted", false).descending("_createdDate").find(),
-            query.clone().eq("isPrinted", true).descending("_createdDate").find()
+            activeQuery.find(),
+            historyQuery.find()
         ]);
 
         dashboard.postMessage({
