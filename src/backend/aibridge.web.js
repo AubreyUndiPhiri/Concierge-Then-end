@@ -40,10 +40,10 @@ export const askAI = webMethod(
         const hfToken = await getSecret("HF_TOKEN");
         if (!hfToken) return "The AI concierge is currently offline.";
 
-        // 1. FETCH DYNAMIC CONTEXT (Availability, Prices, Drivers)
+        // 1. FETCH DYNAMIC CONTEXT (Availability, Prices, Transport Rates)
         let availabilityContext = "";
         let priceContext = "";
-        let driverContext = "";
+        let transportRateContext = "";
 
         try {
             const settings = await wixData.query("LodgeSettings")
@@ -53,9 +53,9 @@ export const askAI = webMethod(
             if (settings.items.length > 0) {
                 settings.items.forEach(item => {
                     if (item.title === "ActivitiesPrices" && item.unavailableText) {
-                        priceContext = `UPDATED ACTIVITY PRICES: ${item.unavailableText}\n`;
+                        priceContext = `UPDATED ACTIVITY PRICES (USD): ${item.unavailableText}\n`;
                     } else if (item.title === "DriverInfo" && item.unavailableText) {
-                        driverContext = `ROYAL DRIVER DIRECTORY: ${item.unavailableText}\n`;
+                        transportRateContext = `LIVE TRANSPORT RATES (Kwacha): ${item.unavailableText}\n`;
                     } else if (item.unavailableText) {
                         const deptName = item.title.replace('Availability', '').replace('Daily', 'Kitchen');
                         availabilityContext += `- ${deptName}: The following are UNAVAILABLE today: ${item.unavailableText}.\n`;
@@ -83,17 +83,9 @@ export const askAI = webMethod(
 
         const lodgeKnowledgeBase = `
 PROPERTY: NKHOSI LIVINGSTONE LODGE & SPA.
-LOCATION: Eco-resort in Mukuni Village, Livingstone, Zambia. Solar-powered and luxury-focused.
-
-I. SPA & WELLNESS:
-Massages: Full Body (**K1300**), Deep Tissue (**K1300**), Hot Stone (**K1400**), Ukuchina Zambian Trad (**K1400**).
-Beauty: Manicure (**K750**), Pedicure (**K750**), Facial (**K1550**).
-
-II. DINNER:
-Village Chicken Stew (**K270**), Zambezi Bream (**K245**), Chicken Ifisashi (**K275**).
-
-III. ACTIVITIES:
-Sunset Cruises (**$85**), Guided Falls Tours, Canoeing.
+SPA: Massages (**K1300**), Beauty (**K750**+), Facial (**K1550**).
+KITCHEN: Village Chicken (**K270**), Zambezi Bream (**K245**), Chicken Ifisashi (**K275**).
+ACTIVITIES: Sunset Cruise (**$85**), Guided Falls Tours.
         `.trim();
 
         // 3. ORGANIZED SYSTEM PROMPT
@@ -101,26 +93,26 @@ Sunset Cruises (**$85**), Guided Falls Tours, Canoeing.
 ### IDENTITY & ROLE
 Your name is Nkhosi, the professional Royal Concierge for Nkhosi Livingstone Lodge & SPA. You are grounded, sophisticated, and authentically Zambian.
 
-### CURRENT STATUS & LIVE UPDATES
-- **Availability:** ${availabilityContext || "All services are fully available today."}
-- **Special Pricing:** ${priceContext || "Follow standard Knowledge Base prices."}
-- **Transport:** ${driverContext || "Advise guests to contact the front desk for transport."}
+### SECTION 1: LIVE PRICING & STATUS
+- **Transport Rates:** ${transportRateContext || "Refer transport inquiries to the front desk for pricing."}
+- **Service Availability:** ${availabilityContext || "All services are fully available today."}
+- **Activity Pricing:** ${priceContext || "Follow standard Knowledge Base USD prices."}
 
-### GREETING PROTOCOL
-- Always start the conversation with "${roomInfo.greet}".
-- Welcome them specifically to the **${roomInfo.name}** room.
-- Ask for their name if not known.
+### SECTION 2: GREETING PROTOCOL
+- Always start the very first response with "${roomInfo.greet}".
+- Welcome the guest specifically to the **${roomInfo.name}** room.
+- Ask for their name if it's not already in the chat history.
 
-### BOOKING & TRANSACTION RULES
-1. **Mandatory Info:** You must confirm the Guest Name and Preferred Time before initiating checkout.
-2. **Formatting:** Bold all currency values (e.g., **K1400** or **$85**).
-3. **Receipt Generation:** Before finalizing, list every item selected with its price and a calculated TOTAL.
-4. **Checkout Trigger:** Once the guest says "Yes" or confirms the receipt, you MUST append this tag to the end of your message: [ACTION:TRIGGER_CHECKOUT|TOTAL_NUMBER]
-   - *Example:* "Your order is confirmed. [ACTION:TRIGGER_CHECKOUT|1545]"
+### SECTION 3: BOOKING & TRANSACTION RULES
+1. **Mandatory Info:** You MUST confirm the Guest Name and Preferred Time/Location before checkout.
+2. **Formatting:** Always bold currency values (e.g., **K150** or **$85**).
+3. **Receipt Generation:** List every item or destination selected with its price and a calculated TOTAL.
+4. **Checkout Trigger:** When the guest confirms, you MUST append this tag: [ACTION:TRIGGER_CHECKOUT|TOTAL_NUMBER]
+   - *Example:* "Your taxi to Town is booked. [ACTION:TRIGGER_CHECKOUT|150]"
 
-### CONTEXTUAL GUIDELINES
-- If an item is UNAVAILABLE, offer a similar alternative.
-- Keep responses concise and helpful.
+### SECTION 4: CONTEXTUAL GUIDELINES
+- If a guest asks for a destination/item marked as UNAVAILABLE, apologize and suggest an available alternative.
+- For Transport: Use the LIVE TRANSPORT RATES provided above to calculate the price.
 
 ### KNOWLEDGE BASE
 ${lodgeKnowledgeBase}
@@ -159,25 +151,26 @@ ${lodgeKnowledgeBase}
 
             // 4. ACTION TRIGGER & DEPARTMENT ROUTING
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT")) {
-                // Regex to capture the number regardless of trailing brackets
                 const amountMatch = aiResponse.match(/TRIGGER_CHECKOUT\|(\d+)/);
                 const amount = amountMatch ? amountMatch[1] : "0";
 
                 const msg = userMessage.toLowerCase();
                 let dept = "Activities"; 
 
-                // Sophisticated keyword routing
+                // Updated Routing Logic to include the "Drivers" department
                 if (msg.match(/food|order|dinner|lunch|chicken|bream|nshima|eat|kitchen|stew/)) {
                     dept = "Kitchen";
                 } else if (msg.match(/massage|spa|facial|pedicure|manicure|treatment|beauty/)) {
                     dept = "Spa";
+                } else if (msg.match(/taxi|driver|cab|transport|airport|town|shuttle|ride|pick up|drop off/)) {
+                    dept = "Drivers";
                 }
                 
                 await createPendingRequest(
                     sanitizedRoom, 
                     roomInfo.name, 
                     dept, 
-                    "Guest initiating secure checkout", 
+                    "Order initiated via AI Concierge", 
                     aiResponse, 
                     amount
                 );
