@@ -31,7 +31,7 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
-        // 1. SYSTEM HANDLERS
+        // --- 1. SYSTEM & AUTH HANDLERS ---
         if (d.type === "ready") {
             if (!loggedInStaff) {
                 dashboard.postMessage({ type: "showLogin" });
@@ -62,13 +62,13 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // 2. STAFF MANAGEMENT HANDLERS (Moved inside loop)
+        // --- 2. STAFF MANAGEMENT HANDLERS (CRITICAL FIXES) ---
         if (d.type === "enrollStaff") {
             try {
                 const result = await enrollStaff(d.staffData);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
-                    const list = await getAllStaff();
+                    const list = await getAllStaff(); // Refresh list immediately
                     dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
                 }
             } catch (err) {
@@ -78,12 +78,11 @@ $w.onReady(function () {
 
         if (d.type === "updateStaffInfo") {
             try {
-                // Update roles via backend
+                // Bridge to backend/staffManager.web.js
                 const result = await updateStaffRoles(d.data.id, d.data.roles);
-                
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
-                    const list = await getAllStaff();
+                    const list = await getAllStaff(); // Refresh list immediately
                     dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
                 }
             } catch (err) {
@@ -96,7 +95,7 @@ $w.onReady(function () {
                 const result = await deleteStaff(d.id);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "Staff member deleted." });
-                    const list = await getAllStaff();
+                    const list = await getAllStaff(); // Refresh list immediately
                     dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
                 }
             } catch (err) {
@@ -109,7 +108,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
         }
 
-        // 3. ORDER & ANALYTICS HANDLERS
+        // --- 3. DATA & ANALYTICS HANDLERS ---
         if (d.type === "filter") {
             currentDept = d.department;
             currentFilterDate = d.date || null;
