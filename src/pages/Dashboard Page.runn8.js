@@ -31,7 +31,7 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
-        // AUTH & READY HANDLERS
+        // --- 1. SYSTEM & AUTH HANDLERS ---
         if (d.type === "ready") {
             if (!loggedInStaff) {
                 dashboard.postMessage({ type: "showLogin" });
@@ -62,14 +62,16 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // STAFF MANAGEMENT HANDLERS (THE BRIDGE)
+        // --- 2. STAFF MANAGEMENT HANDLERS (THE BRIDGE) ---
         if (d.type === "enrollStaff") {
             try {
+                // d.staffData comes from the finalizeEnrollment() function in HTML
                 const result = await enrollStaff(d.staffData);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
-                    const list = await getAllStaff(); // Refresh the list for the HTML
-                    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+                    // CRITICAL: Refresh the roster immediately
+                    const updatedList = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
                 }
             } catch (err) {
                 dashboard.postMessage({ type: "alert", msg: "Registration failed: " + err.message });
@@ -78,11 +80,13 @@ $w.onReady(function () {
 
         if (d.type === "updateStaffInfo") {
             try {
+                // d.data contains {id, firstName, email, password, roles}
                 const result = await updateStaffRoles(d.data.id, d.data.roles);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
-                    const list = await getAllStaff(); // Refresh the list for the HTML
-                    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+                    // CRITICAL: Refresh the roster immediately
+                    const updatedList = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
                 }
             } catch (err) {
                 dashboard.postMessage({ type: "alert", msg: "Update failed: " + err.message });
@@ -94,8 +98,9 @@ $w.onReady(function () {
                 const result = await deleteStaff(d.id);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "Staff member deleted." });
-                    const list = await getAllStaff(); // Refresh the list for the HTML
-                    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+                    // CRITICAL: Refresh the roster immediately
+                    const updatedList = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
                 }
             } catch (err) {
                 dashboard.postMessage({ type: "alert", msg: "Deletion failed: " + err.message });
@@ -107,7 +112,7 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
         }
 
-        // DATA HANDLERS
+        // --- 3. DATA & ANALYTICS HANDLERS ---
         if (d.type === "filter") {
             currentDept = d.department;
             currentFilterDate = d.date || null;
@@ -155,6 +160,8 @@ $w.onReady(function () {
         }
     });
 });
+
+/** --- HELPER FUNCTIONS --- **/
 
 async function setupDashboard(user) {
     const formattedUser = formatUser(user);
