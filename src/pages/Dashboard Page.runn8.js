@@ -86,17 +86,6 @@ $w.onReady(function () {
             }
         }
 
-        if (d.type === "deleteStaff") {
-            try {
-                await deleteStaff(d.id);
-                dashboard.postMessage({ type: "alert", msg: "Member removed from registry." });
-                const list = await getAllStaff();
-                dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: err.message });
-            }
-        }
-
         if (d.type === "enrollStaff") {
             try {
                 await enrollStaff(d.staffData);
@@ -108,7 +97,6 @@ $w.onReady(function () {
             }
         }
 
-        // --- ADMIN EDIT STAFF INFO HANDLER ---
         if (d.type === "updateStaffInfo") {
             try {
                 const staff = await wixData.get("StaffProfiles", d.data.id, { suppressAuth: true });
@@ -116,12 +104,10 @@ $w.onReady(function () {
                     ...staff,
                     firstName: d.data.firstName,
                     email: d.data.email,
-                    password: d.data.password,
-                    roles: d.data.roles
+                    password: d.data.password
                 };
                 await wixData.update("StaffProfiles", toSave, { suppressAuth: true });
-                
-                dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
+                dashboard.postMessage({ type: "alert", msg: "Staff profile updated." });
                 const list = await getAllStaff();
                 dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
             } catch (err) {
@@ -132,9 +118,9 @@ $w.onReady(function () {
         if (d.type === "updateStaffRoles") {
             try {
                 await updateStaffRoles(d.id, d.roles);
-                dashboard.postMessage({ type: "alert", msg: "Staff permissions updated." });
+                dashboard.postMessage({ type: "alert", msg: "Permissions updated." });
             } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Update failed: " + err.message });
+                dashboard.postMessage({ type: "alert", msg: "Update failed." });
             }
         }
 
@@ -167,13 +153,17 @@ $w.onReady(function () {
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
+                // Update to Ready and Flipped Printed to true to move it to History
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
+                
                 await wixData.insert("ChatHistory", {
                     userMessage: "[SYSTEM_ACTION: NOTIFY_READY]",
                     aiResponse: `Mwaiseni! Your ${d.dept} request is now ready.`,
                     roomNumber: String(d.room),
                     timestamp: new Date()
                 }, { suppressAuth: true });
+
+                dashboard.postMessage({ type: "alert", msg: "Guest has been notified." });
                 await loadOrders(currentDept);
             } catch (err) {
                 console.error("Fulfillment failed:", err);
@@ -194,7 +184,6 @@ async function setupDashboard(user) {
         isAdmin: isAdmin
     });
 
-    // Reset UI State for fresh login
     currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
     await loadOrders(currentDept);
     await fetchAvailability(currentDept);
@@ -207,27 +196,28 @@ async function setupDashboard(user) {
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(async () => {
         await loadOrders(currentDept);
-        if (isAdmin) {
-            const kpis = await getAdminKPIs();
-            dashboard.postMessage({ type: "loadKPIs", data: kpis });
-        }
-    }, 15000);
+    }, 10000); // Refreshes every 10 seconds
 }
 
 function getStaffName() {
-    return loggedInStaff ? (loggedInStaff.firstName || loggedInStaff.name || "Staff") : "Staff";
+    return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff";
 }
 
 async function loadOrders(department) {
     if (!department) return;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    
+    // BROADENED WINDOW: Get orders from the last 24 hours to avoid timezone/midnight issues
+    const cutoff = new Date();
+    cutoff.setHours(cutoff.getHours() - 24);
 
     try {
-        const query = wixData.query("PendingRequests").eq("requestType", department).ge("_createdDate", today);
+        const query = wixData.query("PendingRequests")
+            .eq("requestType", department)
+            .ge("_createdDate", cutoff);
+
         const [active, history] = await Promise.all([
-            query.eq("isPrinted", false).descending("_createdDate").find(),
-            query.eq("isPrinted", true).limit(20).descending("_createdDate").find()
+            query.clone().eq("isPrinted", false).descending("_createdDate").find(),
+            query.clone().eq("isPrinted", true).limit(10).descending("_createdDate").find()
         ]);
 
         dashboard.postMessage({
@@ -247,9 +237,7 @@ async function fetchAvailability(department) {
         const item = results.items[0];
         dashboard.postMessage({
             type: "loadAvailability",
-            text: item.unavailableText || "",
-            updatedBy: item.lastUpdatedBy || "Staff",
-            updatedAt: new Date(item._updatedDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            text: item.unavailableText || ""
         });
     }
 }
