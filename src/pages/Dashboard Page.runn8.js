@@ -154,10 +154,6 @@ function getStaffName() {
     return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff";
 }
 
-/**
- * FIXED: Removed .clone() to prevent TypeError. 
- * Defines queries explicitly for Active and History lists.
- */
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
     
@@ -176,7 +172,6 @@ async function loadOrders(department, filterDateStr = null) {
     }
 
     try {
-        // Explicitly defining queries instead of using .clone()
         const activeQuery = wixData.query("PendingRequests")
             .eq("requestType", department)
             .ge("_createdDate", dayStart)
@@ -214,6 +209,14 @@ async function fetchAvailability(department) {
             type: "loadAvailability",
             text: results.items[0].unavailableText || ""
         });
+    }
+}
+
+// FIXED: Added missing function
+async function fetchActivityPrices() {
+    const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
+    if (priceData.items.length > 0) {
+        dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText });
     }
 }
 
