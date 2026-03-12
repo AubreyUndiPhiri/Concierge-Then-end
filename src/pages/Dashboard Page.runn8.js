@@ -18,7 +18,6 @@ let refreshInterval;
 $w.onReady(function () {
     dashboard = $w("#html1");
 
-    // PERSISTENCE: Resume session on load
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) {
         try {
@@ -31,7 +30,6 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
-        // --- INITIALIZATION ---
         if (d.type === "ready") {
             if (!loggedInStaff) {
                 dashboard.postMessage({ type: "showLogin" });
@@ -40,7 +38,6 @@ $w.onReady(function () {
             }
         }
 
-        // --- AUTHENTICATION ---
         if (d.type === "staffLogin") {
             try {
                 const result = await verifyStaffLogin(d.email, d.password);
@@ -52,7 +49,7 @@ $w.onReady(function () {
                     dashboard.postMessage({ type: "alert", msg: result.msg });
                 }
             } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Connection Error" });
+                dashboard.postMessage({ type: "alert", msg: "Login Connection Error" });
             }
         }
 
@@ -63,73 +60,14 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // --- STAFF & DRIVER SETTINGS ---
-        if (d.type === "getStaffList") {
-            const list = await getAllStaff();
-            dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
-        }
-
-        if (d.type === "getDriverInfo") {
-            const res = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
-            dashboard.postMessage({
-                type: "loadDrivers",
-                text: res.items.length > 0 ? res.items[0].unavailableText : ""
-            });
-        }
-
-        if (d.type === "saveDrivers") {
-            try {
-                await saveDriverInfo(d.text);
-                dashboard.postMessage({ type: "alert", msg: "Royal driver list has been synced." });
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Driver sync failed." });
-            }
-        }
-
-        if (d.type === "enrollStaff") {
-            try {
-                await enrollStaff(d.staffData);
-                dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
-                const list = await getAllStaff();
-                dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Enrollment Error: " + err.message });
-            }
-        }
-
-        if (d.type === "updateStaffInfo") {
-            try {
-                const staff = await wixData.get("StaffProfiles", d.data.id, { suppressAuth: true });
-                const toSave = {
-                    ...staff,
-                    firstName: d.data.firstName,
-                    email: d.data.email,
-                    password: d.data.password
-                };
-                await wixData.update("StaffProfiles", toSave, { suppressAuth: true });
-                dashboard.postMessage({ type: "alert", msg: "Staff profile updated." });
-                const list = await getAllStaff();
-                dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Error: " + err.message });
-            }
-        }
-
-        if (d.type === "updateStaffRoles") {
-            try {
-                await updateStaffRoles(d.id, d.roles);
-                dashboard.postMessage({ type: "alert", msg: "Permissions updated." });
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Update failed." });
-            }
-        }
-
-        // --- DASHBOARD ACTIONS ---
+        // --- DYNAMIC DATA SYNC (Drivers, Kitchen, Spa) ---
         if (d.type === "filter") {
             currentDept = d.department;
             await loadOrders(currentDept);
             await fetchAvailability(currentDept);
             if (currentDept === "Activities") await fetchActivityPrices();
+            // NEW: Fetch specific transport rates when on Drivers tab
+            if (currentDept === "Drivers") await fetchDriverRates();
         }
 
         if (d.type === "saveAvailability") {
@@ -144,16 +82,20 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "alert", msg: "AI Activity Prices Updated (USD $)" });
         }
 
-        if (d.type === "refreshKPIs") {
-            const kpis = await getAdminKPIs();
-            dashboard.postMessage({ type: "loadKPIs", data: kpis });
-            dashboard.postMessage({ type: "alert", msg: "Royal Analytics Refreshed." });
+        // NEW: Specific Handler for Driver Rates (Location Pricing)
+        if (d.type === "saveDriverInfo") {
+            try {
+                await saveDriverInfo(d.text); // backend/staffManager function
+                dashboard.postMessage({ type: "alert", msg: "Royal Transport Rates Synced." });
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Driver rate sync failed." });
+            }
         }
 
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
-                // Update to Ready and Flipped Printed to true to move it to History
+                // Mark as Ready and move to history by flipping isPrinted
                 await wixData.update("PendingRequests", { ...originalRecord, status: "Ready", isPrinted: true });
                 
                 await wixData.insert("ChatHistory", {
@@ -162,12 +104,22 @@ $w.onReady(function () {
                     roomNumber: String(d.room),
                     timestamp: new Date()
                 }, { suppressAuth: true });
-
-                dashboard.postMessage({ type: "alert", msg: "Guest has been notified." });
+                
                 await loadOrders(currentDept);
             } catch (err) {
                 console.error("Fulfillment failed:", err);
             }
+        }
+
+        // --- STAFF MANAGEMENT ---
+        if (d.type === "getStaffList") {
+            const list = await getAllStaff();
+            dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+        }
+        if (d.type === "refreshKPIs") {
+            const kpis = await getAdminKPIs();
+            dashboard.postMessage({ type: "loadKPIs", data: kpis });
+            dashboard.postMessage({ type: "alert", msg: "Analytics Refreshed." });
         }
     });
 });
@@ -196,7 +148,7 @@ async function setupDashboard(user) {
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(async () => {
         await loadOrders(currentDept);
-    }, 10000); // Refreshes every 10 seconds
+    }, 10000);
 }
 
 function getStaffName() {
@@ -206,7 +158,7 @@ function getStaffName() {
 async function loadOrders(department) {
     if (!department) return;
     
-    // BROADENED WINDOW: Get orders from the last 24 hours to avoid timezone/midnight issues
+    // BROADENED WINDOW: Show orders from last 24 hours to handle late-night shift crossovers
     const cutoff = new Date();
     cutoff.setHours(cutoff.getHours() - 24);
 
@@ -234,18 +186,20 @@ async function fetchAvailability(department) {
     const settingsTitle = department === "Kitchen" ? "DailyAvailability" : `${department}Availability`;
     const results = await wixData.query("LodgeSettings").eq("title", settingsTitle).find();
     if (results.items.length > 0) {
-        const item = results.items[0];
         dashboard.postMessage({
             type: "loadAvailability",
-            text: item.unavailableText || ""
+            text: results.items[0].unavailableText || ""
         });
     }
 }
 
-async function fetchActivityPrices() {
-    const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
-    if (priceData.items.length > 0) {
-        dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText });
+async function fetchDriverRates() {
+    const res = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
+    if (res.items.length > 0) {
+        dashboard.postMessage({
+            type: "loadDrivers",
+            text: res.items[0].unavailableText || ""
+        });
     }
 }
 
