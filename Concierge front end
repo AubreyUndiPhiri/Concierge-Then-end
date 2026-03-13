@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --bg-main: #1a1a1a;
+            --glass-header: rgba(0, 0, 0, 0.25);
+            --glass-footer: rgba(0, 0, 0, 0.25);
+            --chat-app-bg: rgba(0, 0, 0, 0.4);
+            --text-main: #ffffff;
+            --input-bg: rgba(255, 255, 255, 0.05);
+            --bubble-bot: rgba(255, 255, 255, 0.88);
+            --bubble-bot-text: #111;
+            --menu-bg: rgba(30, 30, 30, 0.9);
+            --menu-text: #ffffff;
+            --menu-border: rgba(255, 255, 255, 0.1);
+            --max-chat-width: 800px;
+            --accent: #e1b12c;
+        }
+
+        .light-mode {
+            --bg-main: #f5f5f7;
+            --glass-header: rgba(255, 255, 255, 0.5);
+            --glass-footer: rgba(255, 255, 255, 0.5);
+            --chat-app-bg: rgba(255, 255, 255, 0.2);
+            --text-main: #1a1a1a;
+            --input-bg: rgba(0, 0, 0, 0.06);
+            --bubble-bot: #ffffff;
+            --bubble-bot-text: #111;
+            --menu-bg: rgba(255, 255, 255, 0.9);
+            --menu-text: #1a1a1a;
+            --menu-border: rgba(0, 0, 0, 0.08);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', -apple-system, Roboto, sans-serif; }
+        
+        body, html { 
+            height: 100%; width: 100%; 
+            background-color: var(--bg-main);
+            background-image: url('https://www.transparenttextures.com/patterns/leopard/60-opacity.png');
+            background-size: 300px;
+            overflow: hidden; position: fixed;
+            transition: background-color 0.5s ease;
+        }
+
+        #chat-app { 
+            display: flex; flex-direction: column; height: 100vh; width: 100%; 
+            max-width: var(--max-chat-width); margin: 0 auto;
+            background: var(--chat-app-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        }
+
+        header { 
+            padding: 15px 16px; 
+            padding-top: max(12px, env(safe-area-inset-top)); 
+            background: var(--glass-header); 
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08); z-index: 100;
+            flex-shrink: 0;
+        }
+
+        .logo { height: clamp(45px, 8vh, 80px); width: auto; cursor: pointer; }
+
+        .menu-container { position: relative; }
+        .menu-btn {
+            background: rgba(255, 255, 255, 0.05); border: none; cursor: pointer; 
+            padding: 8px; border-radius: 12px; display: flex; align-items: center;
+        }
+        .menu-btn svg { width: clamp(20px, 3vh, 24px); height: clamp(20px, 3vh, 24px); fill: var(--text-main); }
+        
+        .menu-dropdown {
+            position: absolute; right: 0; top: 60px;
+            background: var(--menu-bg); backdrop-filter: blur(25px);
+            border: 1px solid var(--menu-border);
+            border-radius: 12px; width: 155px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: none; flex-direction: column; padding: 5px; z-index: 1000;
+            animation: fadeInScale 0.2s ease;
+        }
+        
+        .menu-dropdown.show { display: flex; }
+        .menu-item {
+            padding: 10px 12px; color: var(--menu-text); text-decoration: none;
+            font-size: clamp(12px, 1.8vh, 14px); border: none; background: none; font-weight: 500;
+            text-align: left; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 8px;
+        }
+
+        #log { flex: 1; overflow-y: auto; padding: clamp(12px, 3vh, 20px); display: flex; flex-direction: column; gap: 12px; }
+
+        .bubble { padding: 12px 16px; border-radius: 20px; font-size: clamp(14px, 2vh, 16px); line-height: 1.5; max-width: 85%; animation: fadeIn 0.3s ease; word-wrap: break-word; }
+        .bot { align-self: flex-start; background: var(--bubble-bot); color: var(--bubble-bot-text); border-bottom-left-radius: 4px; }
+        .guest { align-self: flex-end; background: var(--accent); color: #1a1a1a; border-bottom-right-radius: 4px; font-weight: 600; }
+        
+        b { font-weight: 700; color: inherit; }
+
+        .checkout-card {
+            background: var(--bubble-bot); color: var(--bubble-bot-text);
+            padding: 20px; border-radius: 20px; border-bottom-left-radius: 4px;
+            width: 100%; max-width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            margin-bottom: 10px; animation: fadeIn 0.3s ease; align-self: flex-start;
+        }
+        .checkout-card h3 { margin-bottom: 15px; font-size: 18px; color: #1a1a1a; border-bottom: 2px solid var(--accent); display: inline-block; }
+        .checkout-field { margin-bottom: 12px; }
+        .checkout-field label { display: block; font-size: 11px; margin-bottom: 4px; font-weight: 700; color: #555; text-transform: uppercase; }
+        .checkout-field input, .checkout-field textarea {
+            width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: rgba(0,0,0,0.03); font-size: 14px; outline: none; color: #111;
+        }
+        
+        .checkout-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        .pay-btn {
+            width: 100%; background: var(--accent); color: #1a1a1a; border: none; padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; transition: transform 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .pay-btn.secondary { background: #333; color: #fff; }
+        .pay-btn:active { transform: scale(0.95); }
+        .pay-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+        .typing { display: none; align-self: flex-start; background: var(--bubble-bot); padding: 12px 18px; border-radius: 20px; border-bottom-left-radius: 4px; margin-bottom: 10px; }
+        .dots { display: flex; gap: 4px; }
+        .dots span { width: 5px; height: 5px; background: #999; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1.0); } }
+
+        #input-container { 
+            padding: 15px 16px; background: var(--glass-footer);
+            display: flex; gap: 8px; align-items: center; 
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: max(15px, env(safe-area-inset-bottom));
+        }
+        
+        input#userInput { flex: 1; background: var(--input-bg); border: 1.5px solid rgba(225, 177, 44, 0.2); padding: 12px 16px; border-radius: 25px; color: var(--text-main); outline: none; font-size: clamp(14px, 2vh, 16px); -webkit-appearance: none; }
+        .modern-send { background: var(--accent); border: none; width: clamp(40px, 6vh, 48px); height: clamp(40px, 6vh, 48px); border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .modern-send svg { width: 20px; height: 20px; fill: #1a1a1a; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body id="main-body">
+    <div id="chat-app">
+        <header>
+            <img src="https://static.wixstatic.com/media/95f42d_32028d72cfaa4b55b69b00488536c360~mv2.png" class="logo" alt="Logo" onclick="location.reload()">
+            <div class="menu-container">
+                <button class="menu-btn" onclick="toggleMenu()"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
+                <div id="dropdown" class="menu-dropdown">
+                    <button class="menu-item" onclick="toggleDarkMode()" id="mode-btn"><span id="mode-text">Light Mode</span></button>
+                    <a href="https://ai.nkhosilivingstone.com/privacy-policy" target="_blank" class="menu-item">Privacy Policy</a>
+                </div>
+            </div>
+        </header>
+        
+        <div id="log"></div>
+        <div id="typing-indicator" class="typing"><div class="dots"><span></span><span></span><span></span></div></div>
+
+        <div id="input-container">
+            <input type="text" id="userInput" placeholder="Message Nkhosi..." autocomplete="off">
+            <button class="modern-send" onclick="send()"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg></button>
+        </div>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+        const input = document.getElementById('userInput');
+        const typingIndicator = document.getElementById('typing-indicator');
+        let currentRoom = "0";
+
+        const roomData = {
+            "1": { name: "Tonga", greet: "muli buti" },
+            "2": { name: "Tumbuka", greet: "Muli uli" },
+            "3": { name: "Soli", greet: "Muli shani" },
+            "4": { name: "Lenje", greet: "Mutende" },
+            "5": { name: "Lamba", greet: "Shani" },
+            "6": { name: "Bemba", greet: "muli shani" },
+            "7": { name: "Lozi", greet: "Muchwani" },
+            "8": { name: "Tokaleya", greet: "muli buti" },
+            "9": { name: "Luvale", greet: "Munayoyo mwane" },
+            "10": { name: "Ngoni", greet: "muli bwanji" }
+        };
+
+        // Handshake: Let parents know we are loaded
+        window.onload = () => { 
+            window.parent.postMessage({ type: "ready" }, "*"); 
+        };
+
+        function toggleMenu() { document.getElementById('dropdown').classList.toggle('show'); }
+
+        function toggleDarkMode() {
+            const body = document.getElementById('main-body');
+            body.classList.toggle('light-mode');
+            document.getElementById('mode-text').innerText = body.classList.contains('light-mode') ? "Dark Mode" : "Light Mode";
+            document.getElementById('dropdown').classList.remove('show');
+        }
+
+        function showTyping() {
+            log.appendChild(typingIndicator);
+            typingIndicator.style.display = "block";
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function hideTyping() { typingIndicator.style.display = "none"; }
+
+        function appendMessage(text, type) {
+            const div = document.createElement('div');
+            div.className = `bubble ${type}`;
+            let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+            div.innerHTML = formattedText.replace(/\n/g, '<br>');
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function showCheckout(itemPlaceholder = "Enter order details...") {
+            hideTyping();
+            const checkoutDiv = document.createElement('div');
+            checkoutDiv.className = 'checkout-card';
+            checkoutDiv.innerHTML = `
+                <h3>Place Order</h3>
+                <div class="checkout-field">
+                    <label>Email Address</label>
+                    <input type="email" id="checkout-email" placeholder="yourname@email.com">
+                </div>
+                <div class="checkout-field">
+                    <label>Order details</label>
+                    <textarea id="checkout-order" rows="3" placeholder="${itemPlaceholder}"></textarea>
+                </div>
+                <div id="checkout-btn-container" class="checkout-actions">
+                    <button class="pay-btn" onclick="processCheckout(this, 'card')">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                        Pay with Card (DPO)
+                    </button>
+                    <button class="pay-btn secondary" onclick="processCheckout(this, 'request')">
+                        Confirm Request Only
+                    </button>
+                </div>
+            `;
+            log.appendChild(checkoutDiv);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function processCheckout(button, mode) {
+            const email = document.getElementById('checkout-email').value.trim();
+            const order = document.getElementById('checkout-order').value.trim();
+            const container = document.getElementById('checkout-btn-container');
+
+            if (!email || !order) { 
+                alert("Please complete both fields before submitting."); 
+                return; 
+            }
+
+            // Disable UI
+            button.innerText = "Syncing...";
+            button.disabled = true;
+
+            // Notify Wix Backend
+            window.parent.postMessage({ 
+                type: "checkout_complete", 
+                payload: { 
+                    email: email, 
+                    order: order, 
+                    room: currentRoom,
+                    paymentMode: mode 
+                } 
+            }, "*");
+
+            // UI Confirmation logic
+            if (mode === 'request') {
+                setTimeout(() => {
+                    container.innerHTML = `<p style="color: #27ae60; font-weight: bold; font-size: 14px; padding: 10px 0; display: flex; align-items: center; gap: 5px;">
+                        <span class="material-icons-outlined" style="font-size: 18px;">check_circle</span> Request sent to staff!
+                    </p>`;
+                    appendMessage("Thank you! I have sent your request to our royal staff for fulfillment. They will attend to your room shortly.", 'bot');
+                }, 1200);
+            } else {
+                // For card, the Velo code will open the Wix Pay Lightbox
+                setTimeout(() => { button.innerText = "Redirecting to Payment..."; }, 1000);
+            }
+        }
+
+        function send() {
+            const val = input.value.trim();
+            if (!val) return;
+            appendMessage(val, 'guest');
+            input.value = "";
+            showTyping();
+            window.parent.postMessage({ type: "chat", payload: val }, "*");
+        }
+
+        window.onmessage = (e) => {
+            if (e.data.type === "response") { 
+                hideTyping(); 
+                appendMessage(e.data.payload, 'bot'); 
+            }
+            else if (e.data.type === "status" && e.data.value === "typing") { 
+                showTyping(); 
+            }
+            else if (e.data.type === "init") {
+                currentRoom = e.data.room;
+                initializeWelcome(e.data.room);
+            }
+            else if (e.data.type === "trigger_checkout") {
+                showCheckout(e.data.placeholder);
+            }
+        };
+
+        input.addEventListener("keypress", (e) => { if (e.key === "Enter") send(); });
+
+        function initializeWelcome(roomNum) {
+            const zambiaTime = new Date(new Date().getTime() + (new Date().getTimezoneOffset() * 60000) + (3600000 * 2));
+            const hours = zambiaTime.getHours();
+            const room = roomData[roomNum] || { name: "Valued Guest", greet: "Greetings" };
+
+            let mealSuggestion = "amenities";
+            if (hours >= 5 && hours < 11) mealSuggestion = "our Full English breakfast";
+            else if (hours >= 11 && hours < 16) mealSuggestion = "our lunch selection";
+            else if (hours >= 16 && hours < 22) mealSuggestion = "our Royal Dinner Collection";
+
+            showTyping();
+            window.parent.postMessage({ 
+                type: "chat", 
+                payload: `[SYSTEM: The guest is in the ${room.name} room. Greet them traditionally with "${room.greet}". Mention ${mealSuggestion}.]`,
+                hidden: true 
+            }, "*");
+        }
+    </script>
+</body>
+</html>
