@@ -21,7 +21,7 @@ export async function sendOrderReadyEmail(email, details) {
             }
         });
     } catch (err) {
-        console.error("❌ Guest Notification Error:", err.message);
+        console.error("Guest Notification Error:", err.message);
         throw new Error("Failed to send guest notification.");
     }
 }
@@ -40,7 +40,7 @@ export async function notifyDepartmentOfNewOrder(orderItem) {
             .find({ suppressAuth: true });
 
         if (staffResults.items.length === 0) {
-            console.warn(`⚠️ No staff members found for department: ${requestType}`);
+            console.warn(`No staff members found for department: ${requestType}`);
             return;
         }
 
@@ -61,9 +61,9 @@ export async function notifyDepartmentOfNewOrder(orderItem) {
         });
 
         await Promise.all(emailPromises);
-        console.log(`✅ Success: Notification emails dispatched to the ${requestType} team.`);
+        console.log(` Success: Notification emails dispatched to the ${requestType} team.`);
     } catch (err) {
-        console.error("❌ Staff Notification Error:", err.message);
+        console.error(" Staff Notification Error:", err.message);
     }
 }
 
