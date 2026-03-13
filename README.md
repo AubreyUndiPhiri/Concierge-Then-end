@@ -46,7 +46,8 @@ Git Integration & Wix CLI extends Editor X's [concurrent editing](https://suppor
 
 
 
-Database Collection Schema Reference
+## **Database Collection Schema Reference**
+
 To successfully rebuild or maintain the Nkhosi Livingstone Lodge database, create the following five collections in the Wix Content Manager with the specified fields.
 
 1. PendingRequests
