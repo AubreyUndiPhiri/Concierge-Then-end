@@ -1,208 +1,218 @@
-
 import wixData from 'wix-data';
 import { local } from 'wix-storage';
 import { verifyStaffLogin } from 'backend/auth.web.js';
 import {
-    enrollStaff,
-    getAdminKPIs,
-    getAllStaff,
-    updateStaffRoles,
-    saveDriverInfo,
-    deleteStaff
+    enrollStaff,
+    getAdminKPIs,
+    getAllStaff,
+    updateStaffRoles,
+    saveDriverInfo, // Used for 'saveDrivers' message
+    deleteStaff
 } from 'backend/staffManager.web.js';
 
-// If you have a backend function for emails, import it here:
-// import { sendOrderReadyEmail } from 'backend/notifications.jsw';
+// Now aligned with the implemented backend function
+import { sendOrderReadyEmail } from 'backend/notifications.web.js';
 
 let dashboard;
 let currentDept = "";
 let loggedInStaff = null;
 let refreshInterval;
-let currentFilterDate = null; 
+let currentFilterDate = null; 
 
 $w.onReady(function () {
-    dashboard = $w("#html1");
+    dashboard = $w("#html1");
 
-    // Session Management
-    const savedStaff = local.getItem("staffSession");
-    if (savedStaff) {
-        try {
-            loggedInStaff = JSON.parse(savedStaff);
-        } catch (e) {
-            local.removeItem("staffSession");
-        }
-    }
+    // Session Management
+    const savedStaff = local.getItem("staffSession");
+    if (savedStaff) {
+        try {
+            loggedInStaff = JSON.parse(savedStaff);
+        } catch (e) {
+            local.removeItem("staffSession");
+        }
+    }
 
-    dashboard.onMessage(async (event) => {
-        const d = event.data;
+    dashboard.onMessage(async (event) => {
+        const d = event.data;
 
-        // --- 1. SYSTEM & AUTH HANDLERS ---
-        if (d.type === "ready") {
-            if (!loggedInStaff) {
-                dashboard.postMessage({ type: "showLogin" });
-            } else {
-                setupDashboard(loggedInStaff);
-            }
-        }
+        // --- 1. SYSTEM & AUTH HANDLERS ---
+        if (d.type === "ready") {
+            if (!loggedInStaff) {
+                dashboard.postMessage({ type: "showLogin" });
+            } else {
+                setupDashboard(loggedInStaff);
+            }
+        }
 
-        if (d.type === "staffLogin") {
-            try {
-                const result = await verifyStaffLogin(d.email, d.password);
-                if (result.success) {
-                    loggedInStaff = result.user;
-                    local.setItem("staffSession", JSON.stringify(loggedInStaff));
-                    setupDashboard(loggedInStaff);
-                } else {
-                    dashboard.postMessage({ type: "alert", msg: result.msg });
-                }
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Login Connection Error" });
-            }
-        }
+        if (d.type === "staffLogin") {
+            try {
+                const result = await verifyStaffLogin(d.email, d.password);
+                if (result.success) {
+                    loggedInStaff = result.user;
+                    local.setItem("staffSession", JSON.stringify(loggedInStaff));
+                    setupDashboard(loggedInStaff);
+                } else {
+                    dashboard.postMessage({ type: "alert", msg: result.msg });
+                }
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Login Connection Error" });
+            }
+        }
 
-        if (d.type === "staffLogout") {
-            local.removeItem("staffSession");
-            loggedInStaff = null;
-            if (refreshInterval) clearInterval(refreshInterval);
-            dashboard.postMessage({ type: "showLogin" });
-        }
+        if (d.type === "staffLogout") {
+            local.removeItem("staffSession");
+            loggedInStaff = null;
+            if (refreshInterval) clearInterval(refreshInterval);
+            dashboard.postMessage({ type: "showLogin" });
+        }
 
-        // --- 2. STAFF MANAGEMENT HANDLERS ---
-        if (d.type === "enrollStaff") {
-            try {
-                const result = await enrollStaff(d.staffData);
-                if (result) {
-                    dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
-                    const updatedList = await getAllStaff();
-                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
-                }
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Registration failed: " + err.message });
-            }
-        }
+        // --- 2. STAFF MANAGEMENT HANDLERS ---
+        if (d.type === "enrollStaff") {
+            try {
+                const result = await enrollStaff(d.staffData);
+                if (result) {
+                    dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
+                    const updatedList = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
+                }
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Registration failed: " + err.message });
+            }
+        }
 
-        if (d.type === "updateStaffInfo") {
-            try {
-                const result = await updateStaffRoles(d.data.id, d.data.roles);
-                if (result) {
-                    dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
-                    const updatedList = await getAllStaff();
-                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
-                }
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Update failed: " + err.message });
-            }
-        }
+        if (d.type === "updateStaffInfo") {
+            try {
+                const result = await updateStaffRoles(d.data.id, d.data.roles);
+                if (result) {
+                    dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
+                    const updatedList = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
+                }
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Update failed: " + err.message });
+            }
+        }
 
-        if (d.type === "deleteStaff") {
-            try {
-                const result = await deleteStaff(d.id);
-                if (result) {
-                    dashboard.postMessage({ type: "alert", msg: "Staff member deleted." });
-                    const updatedList = await getAllStaff();
-                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
-                }
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Deletion failed: " + err.message });
-            }
-        }
+        if (d.type === "deleteStaff") {
+            try {
+                const result = await deleteStaff(d.id);
+                if (result) {
+                    dashboard.postMessage({ type: "alert", msg: "Staff member deleted." });
+                    const updatedList = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
+                }
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Deletion failed: " + err.message });
+            }
+        }
 
-        if (d.type === "getStaffList") {
-            const list = await getAllStaff();
-            dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
-        }
+        if (d.type === "getStaffList") {
+            const list = await getAllStaff();
+            dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+        }
 
-        // --- 3. DATA & ANALYTICS HANDLERS ---
-        if (d.type === "filter") {
-            currentDept = d.department;
-            currentFilterDate = d.date || null;
-            await loadOrders(currentDept, currentFilterDate);
-            await fetchAvailability(currentDept);
-            if (currentDept === "Activities") await fetchActivityPrices();
-            if (currentDept === "Drivers") await fetchDriverRates();
-        }
+        // --- 3. DATA & ANALYTICS HANDLERS ---
+        if (d.type === "filter") {
+            currentDept = d.department;
+            currentFilterDate = d.date || null;
+            await loadOrders(currentDept, currentFilterDate);
+            await fetchAvailability(currentDept);
+            if (currentDept === "Activities") await fetchActivityPrices();
+        }
 
-        if (d.type === "saveAvailability") {
-            const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
-            await saveLodgeSettings(settingsTitle, d.text, getStaffName());
-            dashboard.postMessage({ type: "alert", msg: `AI ${currentDept} Context Synced.` });
-            await fetchAvailability(currentDept);
-        }
+        if (d.type === "saveAvailability") {
+            const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
+            await saveLodgeSettings(settingsTitle, d.text, getStaffName());
+            dashboard.postMessage({ type: "alert", msg: `AI ${currentDept} Context Synced.` });
+            await fetchAvailability(currentDept);
+        }
 
-        // --- 4. ORDER FULFILLMENT & NOTIFICATIONS ---
-        
-        // Handler for "Complete Mission" button
-        if (d.type === "notifyReady") {
-            try {
-                const originalRecord = await wixData.get("PendingRequests", d.id);
-                // Mark as Ready and Printed (Archived)
-                await wixData.update("PendingRequests", { 
-                    ...originalRecord, 
-                    status: "Ready", 
-                    isPrinted: true 
-                });
-                dashboard.postMessage({ type: "alert", msg: "Mission Accomplished." });
-                await loadOrders(currentDept, currentFilterDate);
-            } catch (err) {
-                console.error("Fulfillment failed:", err);
-            }
-        }
+        if (d.type === "saveActivityPrices") {
+            await saveLodgeSettings("ActivitiesPrices", d.text, getStaffName());
+            dashboard.postMessage({ type: "alert", msg: "Activity prices updated." });
+            await fetchActivityPrices();
+        }
 
-        // New Handler for "Notify Client" (Verified Badge Logic)
-        if (d.type === "notifyClientReady") {
-            try {
-                const originalRecord = await wixData.get("PendingRequests", d.id);
-                
-                // 1. Logic to send the actual email would go here
-                // await sendOrderReadyEmail(d.email, originalRecord.details);
+        if (d.type === "saveDrivers") {
+            await saveDriverInfo(d.text); // Syncs to 'DriverInfo' entry in LodgeSettings
+            dashboard.postMessage({ type: "alert", msg: "Driver contacts synced." });
+        }
 
-                // 2. Update Database to reflect email was sent (Verified status)
-                await wixData.update("PendingRequests", { 
-                    ...originalRecord, 
-                    emailSent: true, // This field powers the Green Badge
-                    isPrinted: true  // Move to archives if not already there
-                });
+        if (d.type === "getDriverInfo") {
+            await fetchDriverRates();
+        }
 
-                dashboard.postMessage({ type: "alert", msg: "Client notified. Order Verified." });
-                await loadOrders(currentDept, currentFilterDate);
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Notification failed: " + err.message });
-            }
-        }
+        // --- 4. ORDER FULFILLMENT & NOTIFICATIONS ---
+        
+        // Mark order as Ready (Move from Active to History)
+        if (d.type === "notifyReady") {
+            try {
+                const originalRecord = await wixData.get("PendingRequests", d.id);
+                await wixData.update("PendingRequests", { 
+                    ...originalRecord, 
+                    status: "Ready", 
+                    isPrinted: true 
+                });
+                dashboard.postMessage({ type: "alert", msg: "Mission Accomplished." });
+                await loadOrders(currentDept, currentFilterDate);
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Failed to update mission status." });
+            }
+        }
 
-        if (d.type === "refreshKPIs") {
-            const kpis = await getAdminKPIs();
-            dashboard.postMessage({ type: "loadKPIs", data: kpis });
-            dashboard.postMessage({ type: "alert", msg: "Analytics Refreshed." });
-        }
-    });
+        // Send Email and set Verified Status (Green Badge)
+        if (d.type === "notifyClientReady") {
+            try {
+                const originalRecord = await wixData.get("PendingRequests", d.id);
+                
+                // Call the backend function we implemented earlier
+                await sendOrderReadyEmail(d.email, originalRecord.details);
+
+                await wixData.update("PendingRequests", { 
+                    ...originalRecord, 
+                    emailSent: true,
+                    isPrinted: true 
+                });
+
+                dashboard.postMessage({ type: "alert", msg: "Client notified. Order Verified." });
+                await loadOrders(currentDept, currentFilterDate);
+            } catch (err) {
+                dashboard.postMessage({ type: "alert", msg: "Notification failed: " + err.message });
+            }
+        }
+
+        if (d.type === "refreshKPIs") {
+            const kpis = await getAdminKPIs();
+            dashboard.postMessage({ type: "loadKPIs", data: kpis });
+            dashboard.postMessage({ type: "alert", msg: "Analytics Refreshed." });
+        }
+    });
 });
 
 /** --- HELPER FUNCTIONS --- **/
 
 async function setupDashboard(user) {
-    const formattedUser = formatUser(user);
-    const isAdmin = (formattedUser.roles || []).some(role => role.toLowerCase() === "admin");
-    dashboard.postMessage({ type: "setUser", user: formattedUser, isAdmin: isAdmin });
-    
-    currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
-    currentFilterDate = null;
-    
-    await loadOrders(currentDept);
-    await fetchAvailability(currentDept);
-    
-    if (isAdmin) {
-        const kpis = await getAdminKPIs();
-        dashboard.postMessage({ type: "loadKPIs", data: kpis });
-    }
-    
-    if (refreshInterval) clearInterval(refreshInterval);
-    refreshInterval = setInterval(async () => { await loadOrders(currentDept, currentFilterDate); }, 10000);
+    const formattedUser = formatUser(user);
+    const isAdmin = (formattedUser.roles || []).some(role => role.toLowerCase() === "admin");
+    dashboard.postMessage({ type: "setUser", user: formattedUser, isAdmin: isAdmin });
+    
+    currentDept = isAdmin ? "Kitchen" : (formattedUser.roles[0] || "Kitchen");
+    currentFilterDate = null;
+    
+    await loadOrders(currentDept);
+    await fetchAvailability(currentDept);
+    
+    if (isAdmin) {
+        const kpis = await getAdminKPIs();
+        dashboard.postMessage({ type: "loadKPIs", data: kpis });
+    }
+    
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval = setInterval(async () => { await loadOrders(currentDept, currentFilterDate); }, 10000);
 }
 
 function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff"; }
 
-// --- Updated Order Loader ---
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
     let query = wixData.query("PendingRequests").eq("requestType", department);
@@ -215,16 +225,12 @@ async function loadOrders(department, filterDateStr = null) {
     }
     
     try {
-        // 1. Get truly PENDING orders (not archived)
         const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
-
-        // 2. Get FULFILLED orders (history) - limited to last 10
         const historyResults = await query.clone().eq("isPrinted", true).descending("_createdDate").limit(10).find();
 
-        // Standardize email field mapping for the HTML component
         const mapItems = (items) => items.map(item => ({
             ...item, 
-            clientEmail: item.email // Maps Wix 'email' to HTML 'clientEmail'
+            clientEmail: item.email 
         }));
 
         dashboard.postMessage({ 
@@ -235,48 +241,31 @@ async function loadOrders(department, filterDateStr = null) {
     } catch (err) { console.error("Order load error:", err); }
 }
 
-// --- Updated Mission Accomplished Handler ---
-// This moves the card from Active to History immediately
-if (d.type === "notifyReady") {
-    try {
-        const originalRecord = await wixData.get("PendingRequests", d.id);
-        await wixData.update("PendingRequests", { 
-            ...originalRecord, 
-            status: "Ready", 
-            isPrinted: true // This triggers the move to History
-        });
-        dashboard.postMessage({ type: "alert", msg: "Mission Accomplished." });
-        await loadOrders(currentDept, currentFilterDate);
-    } catch (err) {
-        dashboard.postMessage({ type: "alert", msg: "Failed to update mission status." });
-    }
-}
-
 async function fetchAvailability(department) {
-    const settingsTitle = department === "Kitchen" ? "DailyAvailability" : `${department}Availability`;
-    const results = await wixData.query("LodgeSettings").eq("title", settingsTitle).find();
-    if (results.items.length > 0) { dashboard.postMessage({ type: "loadAvailability", text: results.items[0].unavailableText || "" }); }
+    const settingsTitle = department === "Kitchen" ? "DailyAvailability" : `${department}Availability`;
+    const results = await wixData.query("LodgeSettings").eq("title", settingsTitle).find();
+    if (results.items.length > 0) { dashboard.postMessage({ type: "loadAvailability", text: results.items[0].unavailableText || "" }); }
 }
 
 async function fetchActivityPrices() {
-    const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
-    if (priceData.items.length > 0) { dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText }); }
+    const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
+    if (priceData.items.length > 0) { dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText }); }
 }
 
 async function fetchDriverRates() {
-    const res = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
-    if (res.items.length > 0) { dashboard.postMessage({ type: "loadDrivers", text: res.items[0].unavailableText || "" }); }
+    const res = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
+    if (res.items.length > 0) { dashboard.postMessage({ type: "loadDrivers", text: res.items[0].unavailableText || "" }); }
 }
 
 async function saveLodgeSettings(title, text, staffName) {
-    try {
-        const results = await wixData.query("LodgeSettings").eq("title", title).find();
-        const toSave = { title, unavailableText: text, lastUpdatedBy: staffName };
-        if (results.items.length > 0) toSave._id = results.items[0]._id;
-        return await wixData.save("LodgeSettings", toSave);
-    } catch (err) { console.error("Settings save error:", err); }
+    try {
+        const results = await wixData.query("LodgeSettings").eq("title", title).find();
+        const toSave = { title, unavailableText: text, lastUpdatedBy: staffName };
+        if (results.items.length > 0) toSave._id = results.items[0]._id;
+        return await wixData.save("LodgeSettings", toSave);
+    } catch (err) { console.error("Settings save error:", err); }
 }
 
 function formatUser(user) {
-    return { ...user, roles: (user.roles || []).map(r => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()) };
+    return { ...user, roles: (user.roles || []).map(r => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()) };
 }
