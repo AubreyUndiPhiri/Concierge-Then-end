@@ -45,6 +45,18 @@
         "siteMember": true,
         "anonymous": true
       }
+    },
+    "backend/notifications.web.js": {
+      "sendOrderReadyEmail": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
+      },
+      "publishOrderUpdate": {
+        "siteOwner": true,
+        "siteMember": true,
+        "anonymous": true
+      }
     }
   }
 }
