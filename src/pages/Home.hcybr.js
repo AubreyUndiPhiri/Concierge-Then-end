@@ -11,7 +11,7 @@ $w.onReady(() => {
     const roomNumber = wixLocation.query.room || "General";
     const chatWidget = $w("#html1"); 
 
-    // 1. PERSISTENCE: Restore chat history from session storage if it exists
+    // 1. PERSISTENCE: Restore chat history from session storage
     const savedHistory = session.getItem("concierge_history");
     if (savedHistory) {
         chatHistory = JSON.parse(savedHistory);
@@ -45,16 +45,18 @@ $w.onReady(() => {
             const formData = event.data.payload;
             
             try {
-                // Ensure amount is numeric for the database
                 const totalAmountNumeric = Number(formData.amount) || 0;
 
+                // Sync Database Fields
                 await wixData.insert("PendingRequests", {
                     "roomNumber": String(formData.room || roomNumber),
                     "clientName": formData.name || "Lodge Guest", 
+                    "email": formData.email, // Standardized for Dashboard alignment
                     "details": `ORDER: ${formData.order}`,
-                    "totalAmount": totalAmountNumeric,
+                    "orderTotal": totalAmountNumeric, // Standardized for backend payment sync
                     "fullContext": `Email: ${formData.email} | Mode: ${formData.paymentMode} | Message: ${formData.order}`, 
                     "status": "Pending Verification",
+                    "emailSent": false, // Initializes 'unverified' status for history log
                     "timestamp": new Date(),
                     "isPrinted": false
                 });
@@ -111,7 +113,6 @@ $w.onReady(() => {
         try {
             const aiResponse = await askAI(guestMsg, roomNumber, chatHistory);
 
-            // 3. ROBUST PARSING: Use Regex to extract the amount from [ACTION:TRIGGER_CHECKOUT|123]
             const checkoutRegex = /\[ACTION:TRIGGER_CHECKOUT\|(\d+)\]/;
             const match = aiResponse.match(checkoutRegex);
 
@@ -133,7 +134,6 @@ $w.onReady(() => {
                 chatHistory.push({ "role": "user", "content": guestMsg });
                 chatHistory.push({ "role": "assistant", "content": aiResponse });
                 
-                // Limit history and save to session storage
                 if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
                 session.setItem("concierge_history", JSON.stringify(chatHistory));
             }
