@@ -43,3 +43,75 @@ Learn more about [working with the Wix CLI](https://support.wix.com/en/article/v
 
 ## Invite contributors to work with you
 Git Integration & Wix CLI extends Editor X's [concurrent editing](https://support.wix.com/en/article/editor-x-about-concurrent-editing) capabilities. Invite other developers as collaborators on your [site](https://support.wix.com/en/article/inviting-people-to-contribute-to-your-site) and your [GitHub repo](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-access-to-your-personal-repositories/inviting-collaborators-to-a-personal-repository). Multiple developers can work on a site's code at once.
+
+
+
+Database Collection Schema Reference
+To successfully rebuild or maintain the Nkhosi Livingstone Lodge database, create the following five collections in the Wix Content Manager with the specified fields.
+
+1. PendingRequests
+This is the core operational collection used for real-time order tracking and staff fulfillment.
+
+clientName (Text): The name of the guest or "Lodge Guest".
+
+roomNumber (Text): Numeric room ID (e.g., "1", "2").
+
+roomName (Text): The traditional Zambian name assigned to the room.
+
+requestType (Text): The department responsible (Kitchen, Spa, Activities, or Drivers).
+
+details (Text): Specifics of the order or request.
+
+orderTotal (Number): Calculated total in Kwacha (K).
+
+status (Text): Defaults to "Pending Verification" until fulfilled.
+
+paymentStatus (Text): Set to "PAID" upon successful transaction.
+
+email (Text): Guest email used for dashboard mapping and notifications.
+
+fullContext (Text): Raw message or AI-generated response for record-keeping.
+
+isPrinted (Boolean): Tracking flag for fulfilled/archived tasks.
+
+emailSent (Boolean): Indicates if the "Order Ready" notification was dispatched.
+
+timestamp (Date): Time the request was initially submitted.
+
+2. StaffProfiles
+Used for dashboard authentication and department-based order routing.
+
+email (Text): Unique work email (Primary ID).
+
+password (Text): Access code/pin for dashboard login.
+
+firstName (Text): Staff member's name.
+
+roles (Tags/Array): Assigned departments (e.g., ["Kitchen", "Admin"]).
+
+enrolledAt (Date): Registration date.
+
+3. LodgeSettings
+Stores dynamic data used by the AI to provide up-to-date information to guests.
+
+title (Text): Configuration ID (e.g., "DailyAvailability", "ActivitiesPrices", "DriverInfo").
+
+unavailableText (Text): The actual context/overrides provided to the AI model.
+
+lastUpdatedBy (Text): Name of the staff member who last synced the data.
+
+4. ConciergeFeedback
+Collects guest reviews to generate performance analytics.
+
+rating (Number): Numeric score provided by the guest.
+
+comment (Text): Qualitative feedback.
+
+5. ChatHistory
+Used to maintain conversation context for the AI during active sessions.
+
+role (Text): Either "user" or "assistant".
+
+content (Text): The text of the specific message.
+
+Note: Ensure that suppressAuth: true is utilized in backend queries for these collections to allow the custom Staff Dashboard and AI Bridge to interact with data regardless of the active site visitor's permissions.
