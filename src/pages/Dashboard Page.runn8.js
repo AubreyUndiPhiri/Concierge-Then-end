@@ -19,7 +19,7 @@ let currentFilterDate = null;
 $w.onReady(function () {
     dashboard = $w("#html1");
 
-    // Session Management
+    // Session Management: Restore staff session from local storage
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) {
         try {
@@ -126,7 +126,6 @@ $w.onReady(function () {
         }
 
         // --- 4. ORDER FULFILLMENT & NOTIFICATIONS ---
-        
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
@@ -201,10 +200,10 @@ async function loadOrders(department, filterDateStr = null) {
     query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     
     try {
-        // Corrected .clone() call - case sensitive fix
+        // Corrected .clone() - must be lowercase
         const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
 
-        // Showing all orders from last 24h to match KPI logic
+        // History Results: Showing all orders from last 24h to match KPI logic
         const historyResults = await query.clone().descending("_createdDate").limit(10).find();
         
         const activeItems = activeResults.items.map(item => ({...item, clientEmail: item.email}));
