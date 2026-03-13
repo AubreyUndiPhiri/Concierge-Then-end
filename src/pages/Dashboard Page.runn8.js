@@ -10,7 +10,10 @@ import {
     deleteStaff
 } from 'backend/staffManager.web.js';
 import { sendOrderReadyEmail } from 'backend/notifications.web.js';
-import wixRealtimeBackend from 'wix-realtime-backend';
+import { 
+    sendOrderReadyEmail, 
+    publishOrderUpdate // Add this
+} from 'backend/notifications.web.js';
 
 let dashboard;
 let currentDept = "";
