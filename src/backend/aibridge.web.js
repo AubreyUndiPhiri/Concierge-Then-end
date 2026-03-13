@@ -17,9 +17,7 @@ function getLodgeMenu() {
   * T-Bone Steak: **K310**
   
 - SPA: 
-
 TYPES OF MASSAGE
-
 * Full Body Massage: K1300 (60 Minutes)
 * Deep Tissue: K1300 (60 Minutes)
 * Hot Stone: K1400 (90 Minutes)
@@ -28,7 +26,7 @@ TYPES OF MASSAGE
 * Back, Neck and Shoulder: K950 (30 Minutes)
 * Foot Massage: K750 (20 Minutes)
 
-Below we have BEAUTY TREATMENTS
+BEAUTY TREATMENTS
 * Deep Cleansing (Facial): K1550
 * Manicure with Gel Polish: K850
 * Pedicure with Gel Polish: K850
@@ -39,66 +37,33 @@ Below we have BEAUTY TREATMENTS
 * Repaint Fingers and Nails with Normal Polish: K700
 
 - ACTIVITIES: 
-
-I. Victoria Falls & Livingstone Island
 * Livingstone Island & Devil’s Pool (Seasonal)
-* Livingstone Island Walk
 * Guided Falls Tours (Zambian or Zimbabwean Side)
-* Swimming Under the Falls (Sept–Jan)
-
-II. Aerial Safaris & Steam Train
 * Helicopter Flights (15, 20, or 30-Min)
-* Microlight Flights (15 or 30-Min)
-* Victoria Falls Steam Train
-
-III. Wildlife & Signature Dining
-* The Elephant Café
-* Lion & Tiger Experiences
 * Game Drive (Mosi-oa-Tunya National Park)
-* Chobe Day Trip (Botswana)
-
-IV. River Soul & Fishing
-* Sunset Cruises (Options: Lion King, African Queen, or River Safari)
-* Full Moon Cruise
-* Captain’s Cabin Specialty Cruise
-* Canoeing (Half, Full, or Overnight)
-* Raft Float
-* Fishing (Half or Full Day)
-
-V. Adrenaline & Gorge Adventures
+* Sunset Cruises (Lion King, African Queen, or River Safari)
 * White Water Rafting
-* Bungee & Swing
-* Gorge Swing
-* High Wire (Zipline, Abseiling, Flying Fox)
-* Bridge Tour
-
-VI. Land, Culture & Fashion
-* Horse Trails
-* Quad Bikes
-* Livingstone Town Tour
-* Mukuni Village Cultural Tour
-* Cycling Tours
-* Boma Drum Dinner
-
-  
+* Bungee & Gorge Swing
     `.trim();
 }
 
 /**
  * Helper: Creates a pending request in the database and notifies Realtime.
  */
-async function createPendingRequest(roomNumber, roomName, department, details, guestMsg, totalAmount = "0") {
+async function createPendingRequest(roomNumber, roomName, department, details, guestMsg, totalAmount = "0", email = "Guest via AI") {
     const requestData = {
-        clientName: "Lodge Guest",
-        roomNumber: String(roomNumber),
-        roomName: roomName,
-        requestType: department,
-        details: details, // Now contains specific items/prices extracted from AI response
-        fullContext: guestMsg, 
-        orderTotal: Number(totalAmount),
-        status: "Pending Verification",
-        timestamp: new Date(),
-        isPrinted: false
+        "clientName": "Lodge Guest",
+        "roomNumber": String(roomNumber),
+        "roomName": roomName,
+        "requestType": department,
+        "details": details, 
+        "fullContext": guestMsg, 
+        "email": email, // Added for Dashboard 'clientEmail' mapping alignment
+        "orderTotal": Number(totalAmount), // Ensures numeric sorting in Velo
+        "status": "Pending Verification",
+        "emailSent": false, // Initializes 'unverified' status for the green badge logic
+        "timestamp": new Date(),
+        "isPrinted": false
     };
 
     try {
@@ -132,13 +97,14 @@ export const askAI = webMethod(
         let transportRateContext = "";
 
         try {
+            // Added 'DriversAvailability' to match Dashboard Sync labels
             const settings = await wixData.query("LodgeSettings")
-                .hasSome("title", ["DailyAvailability", "SpaAvailability", "ActivitiesAvailability", "ActivitiesPrices", "DriverInfo"])
+                .hasSome("title", ["DailyAvailability", "SpaAvailability", "ActivitiesAvailability", "DriversAvailability", "ActivitiesPrices", "DriverInfo"])
                 .find({ suppressAuth: true });
             
             settings.items.forEach(item => {
                 if (item.title === "ActivitiesPrices") priceContext = `UPDATED ACTIVITY PRICES: ${item.unavailableText}\n`;
-                else if (item.title === "DriverInfo") transportRateContext = `LIVE TRANSPORT RATES (Kwacha): ${item.unavailableText}\n`;
+                else if (item.title === "DriverInfo") transportRateContext = `LIVE TRANSPORT RATES: ${item.unavailableText}\n`;
                 else if (item.unavailableText) {
                     const dept = item.title.replace('Availability', '').replace('Daily', 'Kitchen');
                     availabilityContext += `- ${dept} UNAVAILABLE: ${item.unavailableText}.\n`;
@@ -163,25 +129,21 @@ export const askAI = webMethod(
         const sanitizedRoom = roomNumber ? String(roomNumber) : "General";
         const roomInfo = roomData[sanitizedRoom] || { name: "Valued Guest", greet: "Greetings" };
 
-        // 3. ORGANIZED SYSTEM PROMPT
         const systemPrompt = `
 ### IDENTITY
-Your name is Nkhosi, the Royal Concierge for Nkhosi Livingstone Lodge & SPA. You are sophisticated and authentically Zambian.
+Your name is Nkhosi, the Royal Concierge for Nkhosi Livingstone Lodge & SPA.
 
 ### SECTION 1: LIVE CONTEXT
 - **Availability:** ${availabilityContext || "Everything is available."}
-- **Activity Overrides:** ${priceContext || "Use standard USD prices."}
-- **Transport Overrides:** ${transportRateContext || "Refer transport pricing to the front desk."}
+- **Activity Overrides:** ${priceContext || "Standard prices apply."}
+- **Transport Overrides:** ${transportRateContext || "Consult front desk for transport."}
 
-### SECTION 2: GREETING & ETIQUETTE
-- Start every new conversation with: "${roomInfo.greet}".
-- Mention you are serving the **${roomInfo.name}** room.
-- Use bolding for all prices (e.g., **K250**).
+### SECTION 2: GREETING
+- Start with: "${roomInfo.greet}". Mention you are serving the **${roomInfo.name}** room.
 
 ### SECTION 3: TRANSACTIONAL RULES
-1. Provide a detailed summary of the order with a calculated total.
-2. Once the guest confirms, append exactly: [ACTION:TRIGGER_CHECKOUT|TOTAL_NUMERIC]
-3. If an item is unavailable per the context, suggest an alternative.
+1. Provide a detailed summary with a calculated total in Kwacha (K).
+2. Once confirmed, append: [ACTION:TRIGGER_CHECKOUT|TOTAL_NUMERIC]
 
 ### SECTION 4: MENU DATA
 ${getLodgeMenu()}
@@ -202,13 +164,9 @@ ${getLodgeMenu()}
             const result = await response.json();
             const aiResponse = result.choices?.[0]?.message?.content?.trim() || "I apologize, mwane. I am offline.";
 
-            // 4. ACTION PROCESSING & ROUTING
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT")) {
                 const amountMatch = aiResponse.match(/TRIGGER_CHECKOUT\|(\d+)/);
                 const amount = amountMatch ? amountMatch[1] : "0";
-                
-                // NEW: Extract items and prices from the AI response to show in emails/dashboard
-                // This removes the system tag [ACTION:...] and leaves just the text summary
                 const cleanDetails = aiResponse.replace(/\[ACTION:TRIGGER_CHECKOUT\|(\d+)\]/g, "").trim();
 
                 const msg = userMessage.toLowerCase();
@@ -217,7 +175,6 @@ ${getLodgeMenu()}
                 else if (msg.match(/massage|spa|facial|beauty/)) dept = "Spa";
                 else if (msg.match(/taxi|driver|transport|airport|ride/)) dept = "Drivers";
 
-                // Save cleanDetails instead of "AI-Generated Order"
                 await createPendingRequest(sanitizedRoom, roomInfo.name, dept, cleanDetails, aiResponse, amount);
             }
 
