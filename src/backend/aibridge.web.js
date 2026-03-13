@@ -15,14 +15,72 @@ function getLodgeMenu() {
   * Zambezi Bream: **K245**
   * Chicken Ifisashi: **K275**
   * T-Bone Steak: **K310**
+  
 - SPA: 
-  * Full Body Massage: **K1300**
-  * Beauty Treatments: **K750**+
-  * Royal Facial: **K1550**
+
+TYPES OF MASSAGE
+
+* Full Body Massage: K1300 (60 Minutes)
+* Deep Tissue: K1300 (60 Minutes)
+* Hot Stone: K1400 (90 Minutes)
+* Ukuchina (Zambian Traditional Massage): K1400 (90 Minutes)
+* Soul Of Livingstone: K1400 (90 Minutes)
+* Back, Neck and Shoulder: K950 (30 Minutes)
+* Foot Massage: K750 (20 Minutes)
+
+Below we have BEAUTY TREATMENTS
+* Deep Cleansing (Facial): K1550
+* Manicure with Gel Polish: K850
+* Pedicure with Gel Polish: K850
+* Manicure with Normal Polish: K750
+* Pedicure with Normal Polish: K750
+* Gel Overlay (Finger Nails): K700
+* Gel Overlay (Toe Nails): K700
+* Repaint Fingers and Nails with Normal Polish: K700
+
 - ACTIVITIES: 
-  * Sunset Cruise: **$85**
-  * Guided Falls Tour: **$50**
-  * Game Drive: **$110**
+
+I. Victoria Falls & Livingstone Island
+* Livingstone Island & Devil’s Pool (Seasonal)
+* Livingstone Island Walk
+* Guided Falls Tours (Zambian or Zimbabwean Side)
+* Swimming Under the Falls (Sept–Jan)
+
+II. Aerial Safaris & Steam Train
+* Helicopter Flights (15, 20, or 30-Min)
+* Microlight Flights (15 or 30-Min)
+* Victoria Falls Steam Train
+
+III. Wildlife & Signature Dining
+* The Elephant Café
+* Lion & Tiger Experiences
+* Game Drive (Mosi-oa-Tunya National Park)
+* Chobe Day Trip (Botswana)
+
+IV. River Soul & Fishing
+* Sunset Cruises (Options: Lion King, African Queen, or River Safari)
+* Full Moon Cruise
+* Captain’s Cabin Specialty Cruise
+* Canoeing (Half, Full, or Overnight)
+* Raft Float
+* Fishing (Half or Full Day)
+
+V. Adrenaline & Gorge Adventures
+* White Water Rafting
+* Bungee & Swing
+* Gorge Swing
+* High Wire (Zipline, Abseiling, Flying Fox)
+* Bridge Tour
+
+VI. Land, Culture & Fashion
+* Horse Trails
+* Quad Bikes
+* Livingstone Town Tour
+* Mukuni Village Cultural Tour
+* Cycling Tours
+* Boma Drum Dinner
+
+  
     `.trim();
 }
 
