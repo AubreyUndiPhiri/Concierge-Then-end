@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root { 
+            --accent: #e1b12c; 
+            --accent-glow: rgba(225, 177, 44, 0.4);
+            --bg-dark: #0a0a0a; 
+            --glass: rgba(255, 255, 255, 0.03); 
+            --glass-thick: rgba(20, 20, 20, 0.98);
+            --border: rgba(255, 255, 255, 0.08); 
+            --text: #ffffff; 
+            --success: #2ecc71; 
+            --danger: #ff4757; 
+        }
+        
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        html, body { height: 100%; margin: 0; padding: 0; background: var(--bg-dark); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; overflow-x: hidden; }
+
+        body::before {
+            content: ""; position: fixed; inset: 0;
+            background-image: url('https://www.transparenttextures.com/patterns/leopard/60-opacity.png');
+            background-size: 400px; opacity: 0.03; pointer-events: none; z-index: 0;
+        }
+
+        /* Modal / Overlay Systems */
+        #modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); backdrop-filter: blur(10px); z-index: 30000; display: none; align-items: center; justify-content: center; padding: 20px; }
+        .modal-box { background: var(--glass-thick); border: 1px solid var(--border); border-radius: 40px; width: 100%; max-width: 500px; position: relative; overflow: hidden; animation: slideUp 0.4s ease-out; }
+
+        #login-overlay { position: fixed; inset: 0; background: var(--bg-dark); z-index: 20000; display: flex; align-items: center; justify-content: center; }
+        .login-card { 
+            width: 92%; max-width: 400px; padding: 50px 35px; border-radius: 40px; 
+            background: linear-gradient(145deg, rgba(35,35,35,0.9), rgba(10,10,10,1)); 
+            border: 1px solid var(--border); backdrop-filter: blur(40px); text-align: center; 
+            box-shadow: 0 50px 120px rgba(0,0,0,0.9); animation: slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); 
+        }
+        .login-field input { width: 100%; padding: 20px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 20px; color: white; font-size: 16px; text-align: center; margin-bottom: 15px; transition: 0.4s; }
+
+        /* Navigation */
+        .nav-bar { display: flex; flex-direction: column; background: var(--glass); margin: 15px; border-radius: 30px; border: 1px solid var(--border); backdrop-filter: blur(15px); padding: 15px; gap: 15px; }
+        #tabs-container { display: flex; gap: 8px; justify-content: space-between; width: 100%; overflow-x: auto; scrollbar-width: none; }
+        #tabs-container::-webkit-scrollbar { display: none; }
+
+        .tab-btn { flex: 1; min-width: 45px; padding: 12px; cursor: pointer; background: transparent; border: none; border-radius: 18px; color: #444; transition: 0.4s; display: flex; align-items: center; justify-content: center; }
+        .tab-btn.active { background: var(--accent); color: #000; box-shadow: 0 10px 20px var(--accent-glow); }
+
+        /* KPI Layout */
+        #admin-kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0 15px 15px; }
+        .kpi-card { background: var(--glass); border: 1px solid var(--border); padding: 18px 5px; border-radius: 22px; text-align: center; }
+        .kpi-val { display: block; font-size: 24px; font-weight: 900; color: var(--accent); }
+
+        /* Filters */
+        .filter-row { display: flex; align-items: center; justify-content: flex-start; margin: 20px 15px 30px; padding: 10px 20px; background: linear-gradient(90deg, var(--glass) 0%, transparent 100%); border-radius: 100px 0 0 100px; border-left: 3px solid var(--accent); width: fit-content; }
+        .date-input { background: transparent; border: none; color: white; outline: none; font-size: 13px; font-weight: bold; cursor: pointer; }
+
+        /* Cards & Badges */
+        .order-card { background: var(--glass); border: 1px solid var(--border); border-radius: 35px; padding: 25px; margin-bottom: 20px; animation: slideUp 0.5s ease-out; }
+        .order-total-badge { background: var(--accent); color: #000; padding: 5px 14px; border-radius: 10px; font-weight: 900; font-size: 12px; }
+        
+        .v-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 900; text-transform: uppercase; padding: 4px 10px; border-radius: 8px; margin-top: 8px; }
+        .v-badge.verified { background: rgba(46, 204, 113, 0.1); color: var(--success); border: 1px solid rgba(46, 204, 113, 0.2); }
+        .v-badge.unverified { background: rgba(225, 177, 44, 0.1); color: var(--accent); border: 1px solid rgba(225, 177, 44, 0.2); }
+
+        .btn-action { width: 100%; border: none; padding: 18px; border-radius: 20px; cursor: pointer; font-weight: 900; color: #000; background: var(--accent); transition: 0.3s; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; }
+        .btn-ghost { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: #fff; padding: 14px; border-radius: 18px; cursor: pointer; width: 100%; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; }
+        .btn-preview { background: var(--glass); border: 1px solid var(--border); color: white; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .role-chip { padding: 6px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 9px; cursor: pointer; margin: 4px; display: inline-block; font-weight: 700; }
+        .role-chip.selected { background: var(--accent); color: #000; border-color: var(--accent); }
+
+        textarea, input { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 15px; color: white; padding: 16px; margin: 10px 0; outline: none; }
+
+        @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @media (max-width: 600px) { .nav-bar { margin: 10px; padding: 10px; } .order-card { padding: 20px; border-radius: 25px; } }
+    </style>
+</head>
+<body>
+
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <div id="modal-content-area" style="padding: 40px 30px 15px;"></div>
+            <div id="modal-footer" style="padding: 0 30px 40px; display: flex; gap: 10px;">
+                <button class="btn-ghost" onclick="closeModal()">Back</button>
+                <button id="modal-confirm-btn" class="btn-action" style="display:none; flex:2;">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="login-overlay">
+        <div class="login-card">
+            <img src="https://static.wixstatic.com/media/95f42d_32028d72cfaa4b55b69b00488536c360~mv2.png" style="height:50px; margin-bottom:40px;">
+            <div class="login-field"><input type="email" id="email" placeholder="Staff ID (Email)"></div>
+            <div class="login-field"><input type="password" id="pass" placeholder="Access Code"></div>
+            <button class="btn-action" onclick="login()">Authorize</button>
+        </div>
+    </div>
+
+    <div id="main-content" style="display:none; padding-bottom: 60px;">
+        <nav class="nav-bar">
+            <div style="display:flex; justify-content: space-between; align-items: center;">
+                <img src="https://static.wixstatic.com/media/95f42d_32028d72cfaa4b55b69b00488536c360~mv2.png" style="height:35px;">
+                <button class="tab-btn" onclick="openSettings()" style="color:var(--accent); flex: 0;"><span class="material-icons-outlined">manage_accounts</span></button>
+            </div>
+            <div id="tabs-container">
+                <button id="tab-Kitchen" class="tab-btn" onclick="handleTabSwitch('Kitchen', this)"><span class="material-icons-outlined">restaurant</span></button>
+                <button id="tab-Spa" class="tab-btn" onclick="handleTabSwitch('Spa', this)"><span class="material-icons-outlined">spa</span></button>
+                <button id="tab-Activities" class="tab-btn" onclick="handleTabSwitch('Activities', this)"><span class="material-icons-outlined">explore</span></button>
+                <button id="tab-Drivers" class="tab-btn" onclick="handleTabSwitch('Drivers', this)"><span class="material-icons-outlined">local_taxi</span></button>
+                <button id="tab-Enroll" class="tab-btn" style="display:none;" onclick="handleTabSwitch('Enroll', this)"><span class="material-icons-outlined">person_add</span></button>
+            </div>
+        </nav>
+
+        <div id="admin-kpi-row">
+            <div class="kpi-card"><span id="kpi-convos" class="kpi-val">0</span><span style="font-size:8px; opacity:0.4; text-transform:uppercase; letter-spacing:1px;">Orders</span></div>
+            <div class="kpi-card"><span id="kpi-rating" class="kpi-val">0.0</span><span style="font-size:8px; opacity:0.4; text-transform:uppercase; letter-spacing:1px;">Rating</span></div>
+            <div class="kpi-card"><span id="kpi-feedback" class="kpi-val">0</span><span style="font-size:8px; opacity:0.4; text-transform:uppercase; letter-spacing:1px;">Reviews</span></div>
+        </div>
+
+        <div id="tab-content-wrapper" style="display: none;">
+            <div class="filter-row">
+                <span style="font-size: 9px; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; margin-right: 12px;">Daily Log</span>
+                <input type="date" id="filter-date" class="date-input" onchange="applyDateFilter()">
+                <span class="material-icons-outlined" style="font-size:15px; color:var(--accent); margin-left:8px;">calendar_month</span>
+            </div>
+
+            <div id="dept-controls" style="padding: 0 10px;">
+                <div id="avail-card" class="settings-card" style="background:var(--glass); padding:20px; border-radius:25px; margin-bottom:20px; border:1px solid var(--border);">
+                    <span id="dept-ai-label" style="font-weight:900; color:var(--accent); text-transform:uppercase; font-size:11px; letter-spacing:1px;">Intelligence</span>
+                    <span id="intel-guide" style="font-size:10px; color:var(--accent); opacity:0.5; display:block; margin:5px 0 10px; font-style:italic;"></span>
+                    <textarea id="outOfStockText" rows="2" placeholder="Input specific constraints..."></textarea>
+                    <button class="btn-action" style="padding: 14px; font-size: 10px;" onclick="customConfirm('Sync Intelligence?', 'AI model will be updated with these constraints.', 'saveAvailability')">Sync Knowledge</button>
+                </div>
+
+                <div id="price-card" class="settings-card" style="display:none; background:var(--glass); padding:20px; border-radius:25px; margin-bottom:20px; border:1px solid var(--border);">
+                    <span style="font-weight:900; color:var(--accent); text-transform:uppercase; font-size:11px; letter-spacing:1px;">Activity Price Overrides</span>
+                    <span style="font-size:10px; color:var(--accent); opacity:0.5; display:block; margin:5px 0 10px; font-style:italic;">Guide: Use this to update seasonal activity prices (USD).</span>
+                    <textarea id="activityPriceText" rows="2" placeholder="Example: Sunset Cruise is now $95..."></textarea>
+                    <button class="btn-action" style="padding: 14px; font-size: 10px; background: #fff;" onclick="customConfirm('Sync Prices?', 'AI will use these new rates for guest quotes.', 'saveActivityPrices')">Sync Prices</button>
+                </div>
+
+                <div id="enrollment-section" style="display:none; background:var(--glass); padding:25px; border-radius:30px; border:1px solid var(--border);">
+                    <span style="font-weight:900; color:var(--accent); text-transform:uppercase; font-size:11px; letter-spacing:1px;">Staff Enrollment</span>
+                    <input type="text" id="new-staff-name" placeholder="Full Name">
+                    <input type="email" id="new-staff-email" placeholder="Work Email">
+                    <input type="password" id="new-staff-pass" placeholder="Assign Pin">
+                    <div id="enroll-role-selector" style="margin: 10px 0;">
+                        <div class="role-chip" data-role="Kitchen" onclick="toggleEnrollRole(this)">Kitchen</div>
+                        <div class="role-chip" data-role="Spa" onclick="toggleEnrollRole(this)">Spa</div>
+                        <div class="role-chip" data-role="Activities" onclick="toggleEnrollRole(this)">Activities</div>
+                        <div class="role-chip" data-role="Drivers" onclick="toggleEnrollRole(this)">Drivers</div>
+                        <div class="role-chip" data-role="Admin" onclick="toggleEnrollRole(this)">Admin</div>
+                    </div>
+                    <button class="btn-action" onclick="customConfirm('Enroll Member?', 'Confirm security profile.', 'enrollStaff')">Create Profile</button>
+                </div>
+            </div>
+
+            <div id="display-area" style="padding: 0 10px;">
+                <div id="active-list"></div>
+                <div class="section-label" style="margin: 40px 5px 10px; font-size: 10px; opacity: 0.4; text-transform: uppercase; letter-spacing: 2px;">Recently Fulfilled</div>
+                <div id="history-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isAdmin = false;
+        let currentUserEmail = "";
+        let currentDept = "";
+        let allStaffList = [];
+        let selectedEnrollRoles = [];
+        let editRolesBuffer = [];
+        let allOrdersCached = [];
+
+        const intelligenceGuides = {
+            "Kitchen": "Guide: AI uses this for out-of-stock items (e.g. 'No Village Chicken today').",
+            "Drivers": "Guide: AI uses this for live transport rates (e.g. 'Airport K450').",
+            "Spa": "Guide: Manage therapist availability or booked slots.",
+            "Activities": "Guide: Update seasonal tour closures or availability."
+        };
+
+        window.onload = () => { 
+            document.getElementById('filter-date').valueAsDate = new Date();
+            window.parent.postMessage({ type: "ready" }, "*"); 
+        };
+
+        function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+
+        function showStatusAlert(msg, type = "success") {
+            const area = document.getElementById('modal-content-area');
+            const isDanger = type === 'danger' || msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('error');
+            area.innerHTML = `<div style="text-align:center; padding:20px;"><span class="material-icons-outlined" style="font-size:72px; color:${isDanger ? 'var(--danger)' : 'var(--accent)'}; margin-bottom:20px;">${isDanger ? 'gpp_maybe' : 'verified'}</span><h3 style="color:white; letter-spacing:1px;">ROYAL SYNC</h3><p style="opacity:0.6; font-size:13px;">${msg}</p></div>`;
+            document.getElementById('modal-confirm-btn').style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'flex';
+            setTimeout(closeModal, 2500);
+        }
+
+        function customConfirm(title, message, actionType, extraData = null) {
+            const area = document.getElementById('modal-content-area');
+            const conf = document.getElementById('modal-confirm-btn');
+            area.innerHTML = `<h3 style="color:var(--accent); margin-bottom:15px; letter-spacing:1px;">${title}</h3><p style="opacity:0.8; font-size:14px; line-height:1.7;">${message}</p>`;
+            conf.style.display = 'block';
+            conf.innerText = actionType.includes('delete') ? "Confirm Removal" : "Verify";
+            conf.className = actionType.includes('delete') ? "btn-action btn-danger" : "btn-action";
+            conf.onclick = () => {
+                if(actionType === 'saveAvailability') window.parent.postMessage({ type: actionType, text: document.getElementById('outOfStockText').value }, "*");
+                if(actionType === 'saveActivityPrices') window.parent.postMessage({ type: actionType, text: document.getElementById('activityPriceText').value }, "*");
+                if(actionType === 'enrollStaff') finalizeEnrollment();
+                if(actionType === 'updateStaffMember') window.parent.postMessage({ type: "updateStaffInfo", data: extraData }, "*");
+                if(actionType === 'deleteStaff') window.parent.postMessage({ type: 'deleteStaff', id: extraData }, "*");
+                if(!actionType.includes('enroll')) closeModal();
+            };
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('pass').value;
+            window.parent.postMessage({ type: "staffLogin", email, password }, "*");
+        }
+
+        function openSettings() {
+            window.parent.postMessage({ type: "getStaffList" }, "*");
+            const content = document.getElementById('modal-content-area');
+            content.innerHTML = `<h2 style="margin:0 0 30px 0; font-size:24px; font-weight:900; color:var(--accent); letter-spacing:1px;">Directory</h2><div id="staff-settings-list" style="max-height:300px; overflow-y:auto; margin-bottom:20px;">Loading...</div><button class="btn-ghost btn-danger" onclick="window.parent.postMessage({ type: 'staffLogout' }, '*');">Sign Out</button>`;
+            document.getElementById('modal-confirm-btn').style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        function editStaffInfo(id) {
+            const staff = allStaffList.find(s => s._id === id);
+            if(!staff) return;
+            editRolesBuffer = [...(staff.roles || [])];
+            const area = document.getElementById('modal-content-area');
+            area.innerHTML = `<h3 style="color:var(--accent); margin-bottom:15px;">Modify Profile</h3><input type="text" id="edit-name" value="${staff.firstName}"><input type="email" id="edit-email" value="${staff.email}"><input type="password" id="edit-pass" value="${staff.password}"><div id="edit-role-selector" style="margin: 15px 0;">${["Kitchen", "Spa", "Activities", "Drivers", "Admin"].map(r => `<div class="role-chip ${editRolesBuffer.includes(r) ? 'selected' : ''}" data-role="${r}" onclick="toggleEditRole(this)">${r}</div>`).join('')}</div><button class="btn-ghost btn-danger" onclick="customConfirm('Remove Member?', 'Revoke access.', 'deleteStaff', '${id}')">Delete Member</button>`;
+            const conf = document.getElementById('modal-confirm-btn');
+            conf.style.display = 'block';
+            conf.innerText = "Commit Changes";
+            conf.onclick = () => {
+                const updatedData = { id: staff._id, firstName: document.getElementById('edit-name').value, email: document.getElementById('edit-email').value, password: document.getElementById('edit-pass').value, roles: editRolesBuffer };
+                customConfirm('Commit Changes?', 'Update profile.', 'updateStaffMember', updatedData);
+            };
+        }
+
+        function toggleEditRole(el) {
+            const role = el.getAttribute('data-role');
+            if(editRolesBuffer.includes(role)) { editRolesBuffer = editRolesBuffer.filter(r => r !== role); el.classList.remove('selected'); }
+            else { editRolesBuffer.push(role); el.classList.add('selected'); }
+        }
+
+        function toggleEnrollRole(el) {
+            const role = el.getAttribute('data-role');
+            if(selectedEnrollRoles.includes(role)) { selectedEnrollRoles = selectedEnrollRoles.filter(r => r !== role); el.classList.remove('selected'); }
+            else { selectedEnrollRoles.push(role); el.classList.add('selected'); }
+        }
+
+        function finalizeEnrollment() {
+            const staffData = { firstName: document.getElementById('new-staff-name').value, email: document.getElementById('new-staff-email').value, password: document.getElementById('new-staff-pass').value, roles: selectedEnrollRoles };
+            window.parent.postMessage({ type: "enrollStaff", staffData }, "*");
+            document.getElementById('new-staff-name').value = ""; document.getElementById('new-staff-email').value = ""; document.getElementById('new-staff-pass').value = "";
+            selectedEnrollRoles = []; document.querySelectorAll('#enroll-role-selector .role-chip').forEach(c => c.classList.remove('selected'));
+        }
+
+        function handleTabSwitch(dept, btn) {
+            currentDept = dept;
+            document.getElementById('tab-content-wrapper').style.display = 'block';
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            const isServiceDept = dept !== 'Enroll';
+            const isActivities = dept === 'Activities';
+
+            document.getElementById('avail-card').style.display = isServiceDept ? 'block' : 'none';
+            document.getElementById('price-card').style.display = isActivities ? 'block' : 'none'; // Show Price Sync only for Activities
+            document.getElementById('enrollment-section').style.display = dept === 'Enroll' ? 'block' : 'none';
+            document.getElementById('display-area').style.display = isServiceDept ? 'block' : 'none';
+            
+            if(isServiceDept) {
+                document.getElementById('dept-ai-label').innerText = `${dept} Intelligence`;
+                document.getElementById('intel-guide').innerText = intelligenceGuides[dept] || "";
+                applyDateFilter();
+            }
+        }
+
+        function applyDateFilter() {
+            const dateStr = document.getElementById('filter-date').value;
+            window.parent.postMessage({ type: "filter", department: currentDept, date: dateStr }, "*");
+        }
+
+        window.onmessage = (event) => {
+            const d = event.data;
+            if (d.type === "showLogin") document.getElementById('login-overlay').style.display = 'flex';
+            if (d.type === "setUser") {
+                document.getElementById('login-overlay').style.display = 'none';
+                document.getElementById('main-content').style.display = 'block';
+                isAdmin = d.isAdmin; currentUserEmail = d.user.email;
+                if(isAdmin) document.getElementById('tab-Enroll').style.display = 'flex';
+            }
+            if (d.type === "staffListUpdate") {
+                allStaffList = d.payload;
+                const container = document.getElementById('staff-settings-list');
+                if(container) {
+                    container.innerHTML = d.payload.map(s => `<div style="padding:15px; background:rgba(255,255,255,0.03); border-radius:15px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;" onclick="${isAdmin ? `editStaffInfo('${s._id}')` : ''}"><div><div style="font-weight:700;">${s.firstName}</div><div style="font-size:10px; opacity:0.4;">${s.email}</div></div>${isAdmin ? '<span class="material-icons-outlined" style="opacity:0.3;">edit</span>' : ''}</div>`).join('');
+                }
+            }
+            if (d.type === "updateOrders") {
+                allOrdersCached = [...d.orders, ...d.history];
+                renderList('active-list', d.orders, false); 
+                renderList('history-list', d.history, true);
+            }
+            if (d.type === "loadKPIs") {
+                document.getElementById('kpi-convos').innerText = d.data.totalConversations || 0;
+                document.getElementById('kpi-rating').innerText = d.data.averageRating || "0.0";
+                document.getElementById('kpi-feedback').innerText = d.data.totalFeedback || 0;
+            }
+            if (d.type === "loadAvailability") document.getElementById('outOfStockText').value = d.text || "";
+            if (d.type === "loadActivityPrices") document.getElementById('activityPriceText').value = d.text || "";
+            if (d.type === "alert") showStatusAlert(d.msg);
+        };
+
+        function renderList(targetId, orders, isHistory) {
+            const container = document.getElementById(targetId);
+            if(!orders || orders.length === 0) { 
+                container.innerHTML = `<div style="padding:40px; text-align:center; opacity:0.2; font-size:10px; letter-spacing:1px;">LOG STATUS: NO ${isHistory ? 'ARCHIVES' : 'PENDING'}</div>`; 
+                return; 
+            }
+            container.innerHTML = orders.map(o => {
+                const isPaid = o.paymentStatus === "PAID";
+                const isVerified = o.emailSent === true;
+                return `
+                <div class="order-card" style="${isHistory ? 'opacity: 0.7; border-style: dashed;' : ''}">
+                    <div style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                        <div>
+                            <div style="font-weight:900; color:var(--accent); font-size:20px;">ROOM ${o.roomName || '??'}</div>
+                            <div style="font-size:9px; opacity:0.4; font-weight:600; text-transform:uppercase;">${new Date(o.timestamp || o._createdDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <div class="btn-preview" onclick="previewOrder('${o._id}')"><span class="material-icons-outlined" style="font-size:18px;">visibility</span></div>
+                            <div class="order-total-badge">K ${o.orderTotal || 0}</div>
+                        </div>
+                    </div>
+                    <div style="font-size:13px; opacity:0.8; line-height:1.5; margin-bottom:15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${o.details || "Order Details"}</div>
+                    <div style="display:flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size:9px; font-weight:900; color:${isPaid ? 'var(--success)' : 'var(--danger)'}">${isPaid ? '● PAID' : '○ UNPAID'}</div>
+                        ${isHistory ? `<div class="v-badge ${isVerified ? 'verified' : 'unverified'}"><span class="material-icons-outlined" style="font-size:12px;">${isVerified ? 'verified' : 'history'}</span>${isVerified ? 'Notified' : 'Fulfilled'}</div>` : ''}
+                    </div>
+                    ${!isHistory ? `<button id="btn-${o._id}" class="btn-action" style="margin-top:15px; padding: 12px; font-size: 11px;" onclick="fulfillOrder('${o._id}')">Complete Mission</button>` : ''}
+                </div>`;
+            }).join('');
+        }
+
+// Ensure preview uses the correct email field mapped from backend
+function previewOrder(id) {
+    const order = allOrdersCached.find(o => o._id === id);
+    if(!order) return;
+    const area = document.getElementById('modal-content-area');
+    
+
+    area.innerHTML = `
+        <div style="text-align:center; margin-bottom:20px;">
+            <span class="material-icons-outlined" style="font-size:40px; color:var(--accent);">receipt_long</span>
+            <h2 style="color:white; margin-top:10px;">Order Context</h2>
+        </div>
+        <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:20px; border:1px solid var(--border); margin-bottom:15px;">
+            <div style="font-size:10px; color:var(--accent); font-weight:800; text-transform:uppercase;">Guest</div>
+            <div style="font-size:16px; font-weight:600; color:white;">${order.clientName || 'Guest'}</div>
+            <div style="font-size:12px; opacity:0.5;">${order.clientEmail || 'No email provided'}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:20px; border:1px solid var(--border);">
+            <div style="font-size:10px; color:var(--accent); font-weight:800; text-transform:uppercase;">Details</div>
+            <div style="font-size:14px; color:white; line-height:1.6;">${order.details || "No details provided"}</div>
+        </div>`;
+
+    const conf = document.getElementById('modal-confirm-btn');
+    conf.style.display = 'block';
+    conf.innerText = (order.emailSent) ? "Resend Notification" : "Notify Client (Email)";
+    conf.onclick = () => { 
+        window.parent.postMessage({ 
+            type: "notifyClientReady", 
+            id: order._id, 
+            email: order.clientEmail 
+        }, "*"); 
+        closeModal(); 
+    };
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+        function fulfillOrder(id) {
+            const btn = document.getElementById(`btn-${id}`);
+            if(btn) { btn.innerText = "SYNCING..."; btn.style.opacity = "0.5"; }
+            window.parent.postMessage({type:'notifyReady', id: id}, '*');
+        }
+    </script>
+</body>
+</html>
