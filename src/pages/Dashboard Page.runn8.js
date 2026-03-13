@@ -201,28 +201,29 @@ async function setupDashboard(user) {
 
 function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff"; }
 
-// [File: Dashboard Page.runn8.js]
-
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
+
+    // Start the base query
     let query = wixData.query("PendingRequests").eq("requestType", department);
     
-    if (filterDateStr) {
-        const selectedDate = new Date(filterDateStr);
-        const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
-        query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
-    }
+    // Set up the 24-hour / Date Filter
+    const selectedDate = filterDateStr ? new Date(filterDateStr) : new Date();
+    const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
+    
+    // Apply the time filter to the base query
+    query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     
     try {
-        // This keeps the top list focused on only PENDING items
+        // FIX 1: Use lowercase .clone() 
+        // This keeps the top list focused on only PENDING items (isPrinted: false)
         const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
 
-        // --- PASTE YOUR NEW LINE HERE ---
-        // This will show ALL 5 orders from the last 24 hours regardless of their printed status
+        // FIX 2: Removed .eq("isPrinted", true) to match KPI logic
+        // This shows ALL 5 orders from the last 24h regardless of status
         const historyResults = await query.clone().descending("_createdDate").limit(10).find();
-        // --------------------------------
-
+        
         // Map 'email' field from DB to 'clientEmail' for the HTML component
         const activeItems = activeResults.items.map(item => ({...item, clientEmail: item.email}));
         const historyItems = historyResults.items.map(item => ({...item, clientEmail: item.email}));
@@ -232,7 +233,9 @@ async function loadOrders(department, filterDateStr = null) {
             orders: activeItems || [], 
             history: historyItems || [] 
         });
-    } catch (err) { console.error("Order load error:", err); }
+    } catch (err) { 
+        console.error("Order load error:", err); 
+    }
 }
 
 async function fetchAvailability(department) {
