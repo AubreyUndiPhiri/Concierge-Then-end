@@ -6,12 +6,11 @@ import {
     getAdminKPIs,
     getAllStaff,
     updateStaffRoles,
-    saveDriverInfo, // Used for 'saveDrivers' message
+    saveDriverInfo,
     deleteStaff
 } from 'backend/staffManager.web.js';
-
-// Now aligned with the implemented backend function
 import { sendOrderReadyEmail } from 'backend/notifications.web.js';
+import wixRealtimeBackend from 'wix-realtime-backend';
 
 let dashboard;
 let currentDept = "";
@@ -84,12 +83,12 @@ $w.onReady(function () {
             try {
                 const result = await updateStaffRoles(d.data.id, d.data.roles);
                 if (result) {
-                    dashboard.postMessage({ type: "alert", msg: "Staff profile updated successfully." });
+                    dashboard.postMessage({ type: "alert", msg: "Staff profile updated." });
                     const updatedList = await getAllStaff();
                     dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
                 }
             } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Update failed: " + err.message });
+                dashboard.postMessage({ type: "alert", msg: "Update failed." });
             }
         }
 
@@ -118,6 +117,7 @@ $w.onReady(function () {
             await loadOrders(currentDept, currentFilterDate);
             await fetchAvailability(currentDept);
             if (currentDept === "Activities") await fetchActivityPrices();
+            if (currentDept === "Drivers") await fetchDriverRates();
         }
 
         if (d.type === "saveAvailability") {
@@ -134,7 +134,7 @@ $w.onReady(function () {
         }
 
         if (d.type === "saveDrivers") {
-            await saveDriverInfo(d.text); // Syncs to 'DriverInfo' entry in LodgeSettings
+            await saveDriverInfo(d.text);
             dashboard.postMessage({ type: "alert", msg: "Driver contacts synced." });
         }
 
@@ -144,19 +144,31 @@ $w.onReady(function () {
 
         // --- 4. ORDER FULFILLMENT & NOTIFICATIONS ---
         
-        // Mark order as Ready (Move from Active to History)
+        // Mark order as Ready, Archive it, and Notify the Guest
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
+                
+                // 1. Mark as Ready and Archive in Database
                 await wixData.update("PendingRequests", { 
                     ...originalRecord, 
                     status: "Ready", 
                     isPrinted: true 
                 });
-                dashboard.postMessage({ type: "alert", msg: "Mission Accomplished." });
+
+                // 2. Trigger Real-time "Order Ready" pop-up for Guest
+                wixRealtimeBackend.publish({ 
+                    name: "OrderUpdates", 
+                    resourceId: String(originalRecord.roomNumber) 
+                }, { 
+                    status: "Ready", 
+                    dept: originalRecord.requestType 
+                });
+
+                dashboard.postMessage({ type: "alert", msg: "Mission Accomplished. Guest Notified." });
                 await loadOrders(currentDept, currentFilterDate);
             } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Failed to update mission status." });
+                console.error("Fulfillment failed:", err);
             }
         }
 
@@ -164,17 +176,15 @@ $w.onReady(function () {
         if (d.type === "notifyClientReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
-                
-                // Call the backend function we implemented earlier
                 await sendOrderReadyEmail(d.email, originalRecord.details);
-
+                
                 await wixData.update("PendingRequests", { 
                     ...originalRecord, 
                     emailSent: true,
                     isPrinted: true 
                 });
 
-                dashboard.postMessage({ type: "alert", msg: "Client notified. Order Verified." });
+                dashboard.postMessage({ type: "alert", msg: "Client notified via Email." });
                 await loadOrders(currentDept, currentFilterDate);
             } catch (err) {
                 dashboard.postMessage({ type: "alert", msg: "Notification failed: " + err.message });
@@ -215,18 +225,23 @@ function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "St
 
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
-    let query = wixData.query("PendingRequests").eq("requestType", department);
+    
+    // Fix: Use baseQuery directly to avoid ".clone is not a function" error
+    let baseQuery = wixData.query("PendingRequests").eq("requestType", department);
     
     if (filterDateStr) {
         const selectedDate = new Date(filterDateStr);
         const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
         const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
-        query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
+        baseQuery = baseQuery.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     }
     
     try {
-        const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
-        const historyResults = await query.clone().eq("isPrinted", true).descending("_createdDate").limit(10).find();
+        // Fetch PENDING orders
+        const activeResults = await baseQuery.eq("isPrinted", false).descending("_createdDate").find();
+
+        // Fetch FULFILLED orders for history log
+        const historyResults = await baseQuery.eq("isPrinted", true).descending("_createdDate").limit(10).find();
 
         const mapItems = (items) => items.map(item => ({
             ...item, 
@@ -244,17 +259,23 @@ async function loadOrders(department, filterDateStr = null) {
 async function fetchAvailability(department) {
     const settingsTitle = department === "Kitchen" ? "DailyAvailability" : `${department}Availability`;
     const results = await wixData.query("LodgeSettings").eq("title", settingsTitle).find();
-    if (results.items.length > 0) { dashboard.postMessage({ type: "loadAvailability", text: results.items[0].unavailableText || "" }); }
+    if (results.items.length > 0) { 
+        dashboard.postMessage({ type: "loadAvailability", text: results.items[0].unavailableText || "" }); 
+    }
 }
 
 async function fetchActivityPrices() {
     const priceData = await wixData.query("LodgeSettings").eq("title", "ActivitiesPrices").find();
-    if (priceData.items.length > 0) { dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText }); }
+    if (priceData.items.length > 0) { 
+        dashboard.postMessage({ type: "loadActivityPrices", text: priceData.items[0].unavailableText }); 
+    }
 }
 
 async function fetchDriverRates() {
     const res = await wixData.query("LodgeSettings").eq("title", "DriverInfo").find();
-    if (res.items.length > 0) { dashboard.postMessage({ type: "loadDrivers", text: res.items[0].unavailableText || "" }); }
+    if (res.items.length > 0) { 
+        dashboard.postMessage({ type: "loadDrivers", text: res.items[0].unavailableText || "" }); 
+    }
 }
 
 async function saveLodgeSettings(title, text, staffName) {
