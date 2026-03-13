@@ -10,9 +10,6 @@ import {
     deleteStaff
 } from 'backend/staffManager.web.js';
 
-// If you have a backend function for emails, import it here:
-// import { sendOrderReadyEmail } from 'backend/notifications.jsw';
-
 let dashboard;
 let currentDept = "";
 let loggedInStaff = null;
@@ -22,7 +19,7 @@ let currentFilterDate = null;
 $w.onReady(function () {
     dashboard = $w("#html1");
 
-    // Session Management
+    // Session Management: Restore session from local storage
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) {
         try {
@@ -130,11 +127,9 @@ $w.onReady(function () {
 
         // --- 4. ORDER FULFILLMENT & NOTIFICATIONS ---
         
-        // Handler for "Complete Mission" button
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
-                // Mark as Ready and Printed (Archived)
                 await wixData.update("PendingRequests", { 
                     ...originalRecord, 
                     status: "Ready", 
@@ -147,21 +142,14 @@ $w.onReady(function () {
             }
         }
 
-        // New Handler for "Notify Client" (Verified Badge Logic)
         if (d.type === "notifyClientReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
-                
-                // 1. Logic to send the actual email would go here
-                // await sendOrderReadyEmail(d.email, originalRecord.details);
-
-                // 2. Update Database to reflect email was sent (Verified status)
                 await wixData.update("PendingRequests", { 
                     ...originalRecord, 
-                    emailSent: true, // This field powers the Green Badge
-                    isPrinted: true  // Move to archives if not already there
+                    emailSent: true, 
+                    isPrinted: true 
                 });
-
                 dashboard.postMessage({ type: "alert", msg: "Client notified. Order Verified." });
                 await loadOrders(currentDept, currentFilterDate);
             } catch (err) {
@@ -204,27 +192,21 @@ function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "St
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
 
-    // Start the base query
     let query = wixData.query("PendingRequests").eq("requestType", department);
     
-    // Set up the 24-hour / Date Filter
     const selectedDate = filterDateStr ? new Date(filterDateStr) : new Date();
     const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(selectedDate); dayEnd.setHours(23, 59, 59, 999);
     
-    // Apply the time filter to the base query
     query = query.ge("_createdDate", dayStart).le("_createdDate", dayEnd);
     
     try {
-        // FIX 1: Use lowercase .clone() 
-        // This keeps the top list focused on only PENDING items (isPrinted: false)
+        // Corrected .clone() call - case sensitive fix
         const activeResults = await query.clone().eq("isPrinted", false).descending("_createdDate").find();
 
-        // FIX 2: Removed .eq("isPrinted", true) to match KPI logic
-        // This shows ALL 5 orders from the last 24h regardless of status
+        // Showing all orders from last 24h to match KPI logic
         const historyResults = await query.clone().descending("_createdDate").limit(10).find();
         
-        // Map 'email' field from DB to 'clientEmail' for the HTML component
         const activeItems = activeResults.items.map(item => ({...item, clientEmail: item.email}));
         const historyItems = historyResults.items.map(item => ({...item, clientEmail: item.email}));
 
