@@ -19,7 +19,7 @@ let currentFilterDate = null;
 $w.onReady(function () {
     dashboard = $w("#html1");
 
-    // Session Management: Restore session from local storage
+    // Session Management
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) {
         try {
