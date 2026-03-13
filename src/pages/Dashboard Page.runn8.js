@@ -147,33 +147,26 @@ $w.onReady(function () {
 
         // --- 4. ORDER FULFILLMENT & NOTIFICATIONS ---
         
-        // Mark order as Ready, Archive it, and Notify the Guest
-        if (d.type === "notifyReady") {
-            try {
-                const originalRecord = await wixData.get("PendingRequests", d.id);
-                
-                // 1. Mark as Ready and Archive in Database
-                await wixData.update("PendingRequests", { 
-                    ...originalRecord, 
-                    status: "Ready", 
-                    isPrinted: true 
-                });
+       if (d.type === "notifyReady") {
+    try {
+        const originalRecord = await wixData.get("PendingRequests", d.id);
+        
+        // 1. Mark as Ready and Archive in Database
+        await wixData.update("PendingRequests", { 
+            ...originalRecord, 
+            status: "Ready", 
+            isPrinted: true 
+        });
 
-                // 2. Trigger Real-time "Order Ready" pop-up for Guest
-                wixRealtimeBackend.publish({ 
-                    name: "OrderUpdates", 
-                    resourceId: String(originalRecord.roomNumber) 
-                }, { 
-                    status: "Ready", 
-                    dept: originalRecord.requestType 
-                });
+        // 2. CALL THE BACKEND WRAPPER INSTEAD OF DIRECT PUBLISH
+        await publishOrderUpdate(originalRecord.roomNumber, originalRecord.requestType);
 
-                dashboard.postMessage({ type: "alert", msg: "Mission Accomplished. Guest Notified." });
-                await loadOrders(currentDept, currentFilterDate);
-            } catch (err) {
-                console.error("Fulfillment failed:", err);
-            }
-        }
+        dashboard.postMessage({ type: "alert", msg: "Mission Accomplished. Guest Notified." });
+        await loadOrders(currentDept, currentFilterDate);
+    } catch (err) {
+        console.error("Fulfillment failed:", err);
+    }
+}
 
         // Send Email and set Verified Status (Green Badge)
         if (d.type === "notifyClientReady") {
