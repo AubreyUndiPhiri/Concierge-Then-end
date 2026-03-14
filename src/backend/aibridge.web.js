@@ -7,16 +7,13 @@ import wixRealtimeBackend from 'wix-realtime-backend';
 /**
  * Helper: Centralized Lodge Menu & Pricing
  */
-function getLodgeMenu() {
+/**
+ * Helper: Spa Menu & Pricing (ZMW)
+ */
+function getSpaMenu() {
     return `
-### OFFICIAL LODGE MENU & PRICES
-- KITCHEN: 
-  * Village Chicken: **K270**
-  * Zambezi Bream: **K245**
-  * Chicken Ifisashi: **K275**
-  * T-Bone Steak: **K310**
-  
-- SPA: 
+- SPA TREATMENTS:
+
 TYPES OF MASSAGE
 * Full Body Massage: K1300 (60 Minutes)
 * Deep Tissue: K1300 (60 Minutes)
@@ -27,6 +24,7 @@ TYPES OF MASSAGE
 * Foot Massage: K750 (20 Minutes)
 
 BEAUTY TREATMENTS
+
 * Deep Cleansing (Facial): K1550
 * Manicure with Gel Polish: K850
 * Pedicure with Gel Polish: K850
@@ -35,18 +33,141 @@ BEAUTY TREATMENTS
 * Gel Overlay (Finger Nails): K700
 * Gel Overlay (Toe Nails): K700
 * Repaint Fingers and Nails with Normal Polish: K700
-
-- ACTIVITIES: 
-* Livingstone Island & Devil’s Pool (Seasonal)
-* Guided Falls Tours (Zambian or Zimbabwean Side)
-* Helicopter Flights (15, 20, or 30-Min)
-* Game Drive (Mosi-oa-Tunya National Park)
-* Sunset Cruises (Lion King, African Queen, or River Safari)
-* White Water Rafting
-* Bungee & Gorge Swing
     `.trim();
 }
 
+/**
+ * Helper: Activity Menu & Pricing (USD)
+ */
+function getActivitiesMenu() {
+    return `
+- ACTIVITIES PRICE LIST 
+Victoria Falls & Livingstone Island
+Livingstone Island & Devil's Pool (Seasonal):
+  • Morning (07:30/09:30/10:30): International $170 High / $160 Low | SADC $90 | Local $70
+  • Lunch (12:30): International $220 High / $210 Low | SADC $120 | Local $100
+  • High Tea (15:30): International $210 High / $200 Low | SADC $105 | Local $85
+• Livingstone Island Walk: $110
+• Guided Falls Tours: Zambian Side: $80
+  • Zimbabwean Side: $120 International | $95 SADC
+• Swimming Under the Falls (Sept-Jan): $80
+Aerial Safaris & Steam Train
+• Helicopter Flights: Short 15-Min ($215) | Medium 20-Min ($301) | Long 30-Min ($315)
+  • Local: K4530 short, K6330 Medium, K8530 long flight
+• Microlight Flights: 15-Min ($200) | 30-Min ($390)
+• Victoria Falls Steam Train: Nostalgic Dinner Journey — $230
+Wildlife & Signature Dining
+• The Elephant Café (Interaction + Dining):
+  • Road Transfer: Lunch ($220) | High Tea ($170) | Dinner ($215)
+  • Jetboat Transfer: Breakfast ($240) | Lunch ($270) | High Tea ($230) | Dinner ($270)
+  • Interaction Only: $105 (or $190 with Jetboat)
+
+Lion & Tiger Experiences:
+
+  • Lion Walk: $150 International | $100 SADC | K 750 Local
+  • Tiger Walk: $160 International | $110 SADC | K 800 Local
+  • Cub Interaction: $70 International | Lion Viewing: $15
+• Game Drive: Mosi-oa-Tunya National Park — $85
+• Chobe Day Trip (Botswana): Full Day Land & Water Safari — $185
+River Soul & Fishing
+• Sunset Cruises: Lion King: $80 International | $70 SADC | K 900 Local
+  • African Queen: $85
+  • River Safaris: $120
+• Specialty Cruises: Full Moon Cruise ($100) | Captain's Cabin ($110)
+• Canoeing: Half Day ($115) | Full Day ($135) | Overnight ($260) | Raft Float ($105)
+• Fishing: Half Day ($200) | Full Day ($305)
+Adrenaline & Gorge Adventures
+• White Water Rafting: Full Day ($160) | Half Day ($140)
+• Bungee & Swing: Bungee ($194) | Bridge Swing Single ($131) | Tandem Bridge Swing ($201)
+• Gorge Swing: Single ($95 / K 1200) | Tandem ($150 / K 2200)
+• High Wire: Zipline / Abseiling / Flying Fox ($55 / K 700) | Bridge Tour ($80)
+
+Land, Culture & Fashion
+• Horse Trails: 2-Hour ($95) | Half Day with Lunch ($125) | Pony Ride ($30)
+• Quad Bikes: $85 International | $75 SADC | K 750 Local
+• Tours: Livingstone Town ($50) | Mukuni Village ($35) | Cycling Livingstone Cultural Tour ($40) 3 hour | Victoria Falls bike tour ($50) 4 hours | Bicycle Rental ($10)
+• Boma Drum Dinner (Zimbabwe): $110 (Excluding Visas)
+
+
+    `.trim();
+}
+
+/**
+ * Helper: Kitchen Menu & Pricing (ZMW)
+ */
+function getKitchenMenu() {
+    return `
+- KITCHEN: 
+1. Nshima Specialities (Traditional)
+* Nshima with T-Bone Steak | K285: Grilled to preference.
+* Nshima with Zambezi Bream | K285: Whole Bream, deep-fried or char-grilled.
+* Nshima with Beef Rump Steak | K260: Served with local sides.
+* Nshima with Village Chicken | K260: Traditional free-range chicken simmered until tender.
+* Nshima with Grilled Chicken | K235: Succulent grilled chicken portion.
+
+2. Starters
+* Zambian-Glazed Chicken Lollipops | K200: Glazed in zesty Sindambi (hibiscus) and ginger reduction.
+* Beetroot Carpaccio with Feta & Wild Honey | K216: Thinly sliced beetroot with creamy feta, toasted seeds, and wild Zambezi honey.
+* Carrot and Zesty Ginger Soup | K216: Farm-fresh carrot soup with a warm ginger finish.
+* Creamy Mushroom Soup with Bondwe Dust | K216: Forest mushroom soup finished with wild amaranth greens.
+* Butternut & Mongongo Nut Soup | K216: Roasted garden butternut velouté with toasted Mongongo nuts.
+
+3. Main Meals (Dinner Collection)
+* Served with a choice of Traditional Nshima, Mashed Potatoes, or Herbed Rice and Seasonal Vegetables.
+* Village Chicken Stew | K270: Free-range ‘Road Runner’ chicken simmered in paprika and tomato sauce.
+* African Chicken Ifisashi Stew | K275: Tender chicken cooked with local vegetables and peanut sauce.
+* Signature Whole Zambezi Bream | K245: Grilled or fried, served with tomato-onion relish.
+* African Beef Ifisashi Stew | K345: Prime beef cuts with local vegetables and peanut sauce.
+* Goat Meat Stew | K225: Slow-braised in a traditional herb-infused gravy.
+
+4. Continental & Fusion Collection
+* Classic Pepper Steak | K350: Prime beef fillet or rump, flamed in brandy and cream sauce.
+* Beef Rump with Wild Berry Herb Butter | K340: Flame-grilled steak with seasonal forest berry butter.
+* Zambezi Fish & Coconut Stew | K250: Fish simmered in a creamy coconut and chili base.
+* Lemon and Wild Herb Chicken Breast | K265: Pan-seared with fresh garden lemons and light garlic-butter sauce.
+* Beef Stroganoff with Sindambi Cream | K295: Beef strips in wild mushroom and hibiscus cream sauce with Zambian Rice.
+* Grilled Pork Chops with Forest Mushrooms | K255: Topped with sautéed mushrooms and roasted potatoes.
+
+5. Vegetarian Mains
+* Zambian Garden Pesto Pasta | K245: Tagliatelle with wild Bondwe pesto, Mongongo nuts, and parmesan.
+* Forest Mushroom & Tente Risotto | K255: White wine risotto with wild Zambian forest mushrooms and truffle oil.
+* Roasted Butternut & Mongongo Nut Roast | K240: Half-moon butternut stuffed with mushroom and spinach.
+* Eggplant & Sindambi Stack | K220: Grilled eggplant and tomato with hibiscus and herbed rice.
+
+6. Light Bites & Classics
+* Salads: Chicken Caesar (K210), Veggie Caesar (K195), Smoked Chicken (K210), Tuna (K195).
+* Wraps & Sandwiches: Mediterranean Veggie Wrap (K210), Chicken Wraps (K225), Toasted Sandwich (K195).
+* Grill/Seafood: Beef Burger (K260), Chicken/Veggie Burger (K235), Beef Lasagna (K235), Chicken Wings (K210), Crumbed Fish (K225), Fish or Chicken Goujons (K215).
+
+7. Desserts
+* Lacto (Sour Milk) Cheesecake | K225: With Musika (Tamarind) jelly reduction.
+* Zambian Orchard Fruit Cake | K185: Infused with Baobab/Masuku fruit pulp and wild honey.
+* Vitumbuwa Bread Pudding | K175: Made from local fritters with butterscotch sauce.
+* Dark Chocolate & Mongongo Nut Ganache | K210: Torte with toasted Mongongo nuts.
+
+8. Beverage Highlights
+* Hot Drinks: Tea/Coffee (K45–K50), Hot Chocolate/Milo (K60).
+* Milkshakes: Vanilla, Strawberry, Banana, Coffee (K125).
+* Bar: Wide selection of Beers (K55–K85), Whiskey, Gin, Vodka, and Liqueurs.
+* Wine: Large selection of House Wines (K90–K205 per glass) and Premium Bottles (K600–K750).
+* Cocktails | K170: Mojito, Bloody Mary, Pina Colada, Margarita, Tequila Sunrise.
+  
+    `.trim();
+}
+
+/**
+ * Helper: Centralized Lodge Menu
+ */
+function getLodgeMenu() {
+    return `
+### OFFICIAL LODGE MENU & PRICES
+${getKitchenMenu()}
+
+${getSpaMenu()}
+
+${getActivitiesMenu()}
+    `.trim();
+}
 /**
  * Helper: Creates a pending request in the database and notifies Realtime.
  */
@@ -189,7 +310,7 @@ ${getLodgeMenu()}
 
             return aiResponse;
         } catch (err) {
-            return "I apologize, but I am having trouble connecting. Please call +260978178820.";
+            return "I apologize, but I am having trouble connecting. Please call +260978178820 or Email: Inkhosi@aol.com.";
         }
     }
 );
