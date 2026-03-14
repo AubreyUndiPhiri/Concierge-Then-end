@@ -305,10 +305,12 @@ ${getLodgeMenu()}
             const result = await response.json();
             const aiResponse = result.choices?.[0]?.message?.content?.trim() || "I apologize, mwane. I am offline.";
 
-            if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT")) {
-                const amountMatch = aiResponse.match(/TRIGGER_CHECKOUT\|(\d+)/);
-                const amount = amountMatch ? amountMatch[1] : "0";
-                const cleanDetails = aiResponse.replace(/\[ACTION:TRIGGER_CHECKOUT\|(\d+)\]/g, "").trim();
+           // if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT")) {
+             //   const amountMatch = aiResponse.match(/TRIGGER_CHECKOUT\|(\d+)/);
+               // const amount = amountMatch ? amountMatch[1] : "0";
+                //const cleanDetails = aiResponse.replace(/\[ACTION:TRIGGER_CHECKOUT\|(\d+)\]/g, "").trim();
+
+            return aiResponse;
 
                 const msg = userMessage.toLowerCase();
                 let dept = "Activities";
