@@ -172,6 +172,12 @@ export const askAI = webMethod(
 - Name: Nkhosi, Royal Concierge for Nkhosi Livingstone Lodge & SPA.
 - Creator: Aubrey Undi Phiri.
 
+### SESSION ISOLATION (CRITICAL)
+- Every user session is unique. 
+- If a message starts with [SYSTEM: ...], it signals a fresh start or a context update for the current guest.
+- Ignore previous orders or names if they contradict the current request.
+- Do NOT carry over past order totals into new inquiries.
+
 ### LIVE CONTEXT
 - Availability: ${availabilityContext || "Everything is available."}
 - Price Context: ${priceContext || "Standard prices apply."}
@@ -208,16 +214,17 @@ ${getLodgeMenu()}
             const aiResponse = result.choices?.[0]?.message?.content?.trim() || "I apologize, mwane. I am offline.";
 
             if (aiResponse.includes("[ACTION:TRIGGER_CHECKOUT")) {
+                // Enhanced regex for decimal support
                 const amountMatch = aiResponse.match(/TRIGGER_CHECKOUT\|(\d+\.?\d*)/);
                 const amount = amountMatch ? amountMatch[1] : "0";
                 const cleanDetails = aiResponse.replace(/\[ACTION:TRIGGER_CHECKOUT\|(\d+\.?\d*)\]/g, "").trim();
 
-                // Detect department by scanning the AI's summary/context
+                // Advanced Department Detection: Scans the AI's own summary
                 const contextCheck = aiResponse.toLowerCase();
                 let dept = "Activities";
-                if (contextCheck.match(/food|nshima|bream|steak|chicken|kitchen|drink|burger|stew/)) dept = "Kitchen";
-                else if (contextCheck.match(/massage|spa|facial|manicure|pedicure|beauty/)) dept = "Spa";
-                else if (contextCheck.match(/taxi|driver|transport|airport/)) dept = "Drivers";
+                if (contextCheck.match(/food|nshima|bream|steak|chicken|kitchen|drink|burger|stew|eggplant|pork|lasagna/)) dept = "Kitchen";
+                else if (contextCheck.match(/massage|spa|facial|manicure|pedicure|beauty|ukuchina/)) dept = "Spa";
+                else if (contextCheck.match(/taxi|driver|transport|airport|shuttle/)) dept = "Drivers";
 
                 await createPendingRequest(sanitizedRoom, roomInfo.name, dept, cleanDetails, aiResponse, amount);
             }
