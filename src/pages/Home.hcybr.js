@@ -17,12 +17,18 @@ $w.onReady(() => {
         chatHistory = JSON.parse(savedHistory);
     }
 
+    // NEW: Helper to clear session data for fresh guest requests
+    const resetSession = () => {
+        chatHistory = [];
+        session.removeItem("concierge_history");
+    };
+
     // 2. REAL-TIME: Listen for "Order Ready" updates from the Staff Dashboard
     wixRealtime.subscribe({ name: "OrderUpdates", resourceId: roomNumber }, (message) => {
         if (message.payload.status === "Ready") {
             chatWidget.postMessage({ 
                 type: "response", 
-                payload: `🔔 Mwaiseni! Your ${message.payload.dept} order is now ready and being delivered.` 
+                payload: ` Mwaiseni! Your ${message.payload.dept} order is now ready and being delivered.` 
             });
         }
     });
@@ -45,22 +51,26 @@ $w.onReady(() => {
             const formData = event.data.payload;
             
             try {
+                // regex refined to support decimals for accurate pricing
                 const totalAmountNumeric = Number(formData.amount) || 0;
 
-                // Sync Database Fields
+                // Sync Database Fields using 'clientEmail' for Dashboard alignment
                 await wixData.insert("PendingRequests", {
                     "roomNumber": String(formData.room || roomNumber),
                     "clientName": formData.name || "Lodge Guest", 
-                    "clientEmail": formData.email, // Standardized for Dashboard alignment
+                    "clientEmail": formData.email, 
                     "details": `ORDER: ${formData.order}`,
-                    "orderTotal": totalAmountNumeric, // Standardized for backend payment sync
+                    "orderTotal": totalAmountNumeric, 
                     "fullContext": `Email: ${formData.email} | Mode: ${formData.paymentMode} | Message: ${formData.order}`, 
                     "status": "Pending Verification",
-                    "emailSent": false, // Initializes 'unverified' status for history log
+                    "emailSent": false,
                     "timestamp": new Date(),
                     "isPrinted": false
                 });
                 
+                // Clear the chat history so the next request from this room is fresh
+                resetSession();
+
                 if (formData.paymentMode === 'card') {
                     chatWidget.postMessage({ type: "status", value: "Processing Payment..." });
                     
@@ -113,7 +123,8 @@ $w.onReady(() => {
         try {
             const aiResponse = await askAI(guestMsg, roomNumber, chatHistory);
 
-            const checkoutRegex = /\[ACTION:TRIGGER_CHECKOUT\|(\d+)\]/;
+            // Refined Regex to catch decimals (e.g., K285.50)
+            const checkoutRegex = /\[ACTION:TRIGGER_CHECKOUT\|(\d+\.?\d*)\]/;
             const match = aiResponse.match(checkoutRegex);
 
             if (match) {
