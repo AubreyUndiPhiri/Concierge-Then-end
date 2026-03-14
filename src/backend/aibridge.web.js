@@ -133,19 +133,24 @@ export const askAI = webMethod(
 ### IDENTITY
 Your name is Nkhosi, the Royal Concierge for Nkhosi Livingstone Lodge & SPA.
 
-### SECTION 1: LIVE CONTEXT
+### LIVE CONTEXT
 - **Availability:** ${availabilityContext || "Everything is available."}
 - **Activity Overrides:** ${priceContext || "Standard prices apply."}
 - **Transport Overrides:** ${transportRateContext || "Consult front desk for transport."}
 
-### SECTION 2: GREETING
+### WELCOME REMARKS
+- only give welcome remarks a the begining of the  
 - Start with: "${roomInfo.greet}". Mention you are serving the **${roomInfo.name}** room.
 
-### SECTION 3: TRANSACTIONAL RULES
-1. Provide a detailed summary with a calculated total in Kwacha (K).
+### TRANSACTIONAL RULES
+1. Provide a detailed summary with a calculated total to the guest and ask them to confirm their order
 2. Once confirmed, append: [ACTION:TRIGGER_CHECKOUT|TOTAL_NUMERIC]
 
 ### SECTION 4: MENU DATA
+
+
+
+
 ${getLodgeMenu()}
         `.trim();
 
@@ -171,8 +176,8 @@ ${getLodgeMenu()}
 
                 const msg = userMessage.toLowerCase();
                 let dept = "Activities";
-                if (msg.match(/food|dinner|lunch|chicken|bream|kitchen/)) dept = "Kitchen";
-                else if (msg.match(/massage|spa|facial|beauty/)) dept = "Spa";
+                if (msg.match(/food|dinner|breakfast|drink|wine|beer|lunch|chicken|bream|kitchen/)) dept = "Kitchen";
+                else if (msg.match(/massage|spa|facial|manicure|pedicure|beauty/)) dept = "Spa";
                 else if (msg.match(/taxi|driver|transport|airport|ride/)) dept = "Drivers";
 
                 await createPendingRequest(sanitizedRoom, roomInfo.name, dept, cleanDetails, aiResponse, amount);
