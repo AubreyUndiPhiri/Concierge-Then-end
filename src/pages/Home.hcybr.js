@@ -51,7 +51,7 @@ $w.onReady(() => {
                 await wixData.insert("PendingRequests", {
                     "roomNumber": String(formData.room || roomNumber),
                     "clientName": formData.name || "Lodge Guest", 
-                    "email": formData.email, // Standardized for Dashboard alignment
+                    "clientEmail": formData.email, // Standardized for Dashboard alignment
                     "details": `ORDER: ${formData.order}`,
                     "orderTotal": totalAmountNumeric, // Standardized for backend payment sync
                     "fullContext": `Email: ${formData.email} | Mode: ${formData.paymentMode} | Message: ${formData.order}`, 
