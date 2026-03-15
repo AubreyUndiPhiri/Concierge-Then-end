@@ -36,12 +36,12 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
+        // --- 2. DIRECTORY REFRESH HANDLER ---
         if (d.type === "getStaffList") {
-    const list = await getAllStaff();
-    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
-}
+            await refreshStaffDirectory();
+        }
 
-        // --- 2. AUTH & INITIALIZATION ---
+        // --- 3. AUTH & INITIALIZATION ---
         if (d.type === "ready") {
             if (!loggedInStaff) {
                 dashboard.postMessage({ type: "showLogin" });
@@ -72,14 +72,13 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // --- 3. STAFF MANAGEMENT ---
+        // --- 4. STAFF MANAGEMENT ---
         if (d.type === "enrollStaff") {
             try {
                 const result = await enrollStaff(d.staffData);
                 if (result) {
                     dashboard.postMessage({ type: "alert", msg: "New member registered." });
-                    const list = await getAllStaff();
-                    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+                    await refreshStaffDirectory();
                 }
             } catch (err) { dashboard.postMessage({ type: "alert", msg: "Error: " + err.message }); }
         }
@@ -87,13 +86,12 @@ $w.onReady(function () {
         if (d.type === "deleteStaff") {
             try {
                 await deleteStaff(d.id);
-                const list = await getAllStaff();
-                dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
                 dashboard.postMessage({ type: "alert", msg: "Staff member removed." });
+                await refreshStaffDirectory();
             } catch (err) { dashboard.postMessage({ type: "alert", msg: "Deletion failed." }); }
         }
 
-        // --- 4. ORDER FULFILLMENT & REAL-TIME ---
+        // --- 5. ORDER FULFILLMENT & REAL-TIME ---
         if (d.type === "notifyReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
@@ -104,7 +102,6 @@ $w.onReady(function () {
                     isPrinted: true 
                 });
 
-                // This triggers the "Mwaiseni!" notification on the Guest's screen
                 await publishOrderUpdate(originalRecord.roomNumber, originalRecord.requestType);
 
                 dashboard.postMessage({ type: "alert", msg: "Mission Accomplished. Guest Notified." });
@@ -115,7 +112,6 @@ $w.onReady(function () {
         if (d.type === "notifyClientReady") {
             try {
                 const originalRecord = await wixData.get("PendingRequests", d.id);
-                // Unified field: clientEmail
                 await sendOrderReadyEmail(originalRecord.clientEmail, originalRecord.details);
 
                 await wixData.update("PendingRequests", {
@@ -130,7 +126,7 @@ $w.onReady(function () {
             } catch (err) { dashboard.postMessage({ type: "alert", msg: "Email failed." }); }
         }
 
-        // --- 5. AI CONTEXT & SETTINGS ---
+        // --- 6. AI CONTEXT & SETTINGS ---
         if (d.type === "filter") {
             currentDept = d.department;
             currentFilterDate = d.date || null;
@@ -165,6 +161,15 @@ $w.onReady(function () {
 });
 
 /** --- LOGIC HELPERS --- **/
+
+async function refreshStaffDirectory() {
+    try {
+        const list = await getAllStaff();
+        dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+    } catch (err) {
+        console.error("Directory refresh failed", err);
+    }
+}
 
 async function setupDashboard(user) {
     const formattedUser = formatUser(user);
@@ -204,10 +209,9 @@ async function loadOrders(department, filterDateStr = null) {
         const activeResults = await baseQuery.eq("isPrinted", false).descending("_createdDate").find();
         const historyResults = await baseQuery.eq("isPrinted", true).descending("_createdDate").limit(10).find();
 
-        // Map to ensure the Dashboard UI sees the guest email correctly
         const mapItems = (items) => items.map(item => ({
             ...item,
-            email: item.clientEmail || item.email // Supports both legacy and new AI fields
+            email: item.clientEmail || item.email 
         }));
 
         dashboard.postMessage({
