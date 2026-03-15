@@ -1,62 +1,35 @@
 {
   "web-methods": {
+    "*": {
+      "siteOwner": { "invoke": true },
+      "siteMember": { "invoke": true },
+      "anonymous": { "invoke": false }
+    },
     "backend/auth.web.js": {
       "verifyStaffLogin": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
+        "siteOwner": { "invoke": true },
+        "siteMember": { "invoke": true },
+        "anonymous": { "invoke": true }
       }
     },
     "backend/staffManager.web.js": {
-      "getAllStaff": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
-      },
-      "enrollStaff": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
-      },
-      "updateStaffRoles": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
-      },
-      "deleteStaff": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
-      },
-      "getAdminKPIs": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
-      },
-      "saveDriverInfo": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
-      }
+      "getAllStaff": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": true } },
+      "enrollStaff": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": true } },
+      "updateStaffRoles": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": true } },
+      "deleteStaff": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": true } },
+      "getAdminKPIs": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": true } },
+      "saveDriverInfo": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": true } }
     },
     "backend/aibridge.web.js": {
       "askAI": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
+        "siteOwner": { "invoke": true },
+        "siteMember": { "invoke": true },
+        "anonymous": { "invoke": true }
       }
     },
     "backend/notifications.web.js": {
-      "sendOrderReadyEmail": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
-      },
-      "publishOrderUpdate": {
-        "siteOwner": true,
-        "siteMember": true,
-        "anonymous": true
-      }
+      "sendOrderReadyEmail": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": true } },
+      "publishOrderUpdate": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": true } }
     }
   }
 }
