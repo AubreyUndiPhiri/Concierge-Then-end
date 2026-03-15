@@ -23,7 +23,7 @@ let currentFilterDate = null;
 $w.onReady(function () {
     dashboard = $w("#html1");
 
-    // Session Management
+    // --- 1. SESSION MANAGEMENT ---
     const savedStaff = local.getItem("staffSession");
     if (savedStaff) {
         try {
@@ -36,7 +36,7 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
-        // --- 1. SYSTEM & AUTH HANDLERS ---
+        // --- 2. AUTH & INITIALIZATION ---
         if (d.type === "ready") {
             if (!loggedInStaff) {
                 dashboard.postMessage({ type: "showLogin" });
@@ -67,52 +67,65 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "showLogin" });
         }
 
-        // --- 2. STAFF MANAGEMENT HANDLERS ---
+        // --- 3. STAFF MANAGEMENT ---
         if (d.type === "enrollStaff") {
             try {
                 const result = await enrollStaff(d.staffData);
                 if (result) {
-                    dashboard.postMessage({ type: "alert", msg: "New member registered successfully." });
-                    const updatedList = await getAllStaff();
-                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
+                    dashboard.postMessage({ type: "alert", msg: "New member registered." });
+                    const list = await getAllStaff();
+                    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
                 }
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Registration failed: " + err.message });
-            }
-        }
-
-        if (d.type === "updateStaffInfo") {
-            try {
-                const result = await updateStaffRoles(d.data.id, d.data.roles);
-                if (result) {
-                    dashboard.postMessage({ type: "alert", msg: "Staff profile updated." });
-                    const updatedList = await getAllStaff();
-                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
-                }
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Update failed." });
-            }
+            } catch (err) { dashboard.postMessage({ type: "alert", msg: "Error: " + err.message }); }
         }
 
         if (d.type === "deleteStaff") {
             try {
-                const result = await deleteStaff(d.id);
-                if (result) {
-                    dashboard.postMessage({ type: "alert", msg: "Staff member deleted." });
-                    const updatedList = await getAllStaff();
-                    dashboard.postMessage({ type: "staffListUpdate", payload: updatedList.items || [] });
-                }
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Deletion failed: " + err.message });
-            }
+                await deleteStaff(d.id);
+                const list = await getAllStaff();
+                dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+                dashboard.postMessage({ type: "alert", msg: "Staff member removed." });
+            } catch (err) { dashboard.postMessage({ type: "alert", msg: "Deletion failed." }); }
         }
 
-        if (d.type === "getStaffList") {
-            const list = await getAllStaff();
-            dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+        // --- 4. ORDER FULFILLMENT & REAL-TIME ---
+        if (d.type === "notifyReady") {
+            try {
+                const originalRecord = await wixData.get("PendingRequests", d.id);
+                
+                await wixData.update("PendingRequests", {
+                    ...originalRecord,
+                    status: "Ready",
+                    isPrinted: true 
+                });
+
+                // This triggers the "Mwaiseni!" notification on the Guest's screen
+                await publishOrderUpdate(originalRecord.roomNumber, originalRecord.requestType);
+
+                dashboard.postMessage({ type: "alert", msg: "Mission Accomplished. Guest Notified." });
+                await loadOrders(currentDept, currentFilterDate);
+            } catch (err) { console.error("Fulfillment error:", err); }
         }
 
-        // --- 3. DATA & ANALYTICS HANDLERS ---
+        if (d.type === "notifyClientReady") {
+            try {
+                const originalRecord = await wixData.get("PendingRequests", d.id);
+                // Unified field: clientEmail
+                await sendOrderReadyEmail(originalRecord.clientEmail, originalRecord.details);
+
+                await wixData.update("PendingRequests", {
+                    ...originalRecord,
+                    emailSent: true,
+                    status: "Ready",
+                    isPrinted: true
+                });
+
+                dashboard.postMessage({ type: "alert", msg: "Email Notification Sent." });
+                await loadOrders(currentDept, currentFilterDate);
+            } catch (err) { dashboard.postMessage({ type: "alert", msg: "Email failed." }); }
+        }
+
+        // --- 5. AI CONTEXT & SETTINGS ---
         if (d.type === "filter") {
             currentDept = d.department;
             currentFilterDate = d.date || null;
@@ -125,14 +138,13 @@ $w.onReady(function () {
         if (d.type === "saveAvailability") {
             const settingsTitle = currentDept === "Kitchen" ? "DailyAvailability" : `${currentDept}Availability`;
             await saveLodgeSettings(settingsTitle, d.text, getStaffName());
-            dashboard.postMessage({ type: "alert", msg: `AI ${currentDept} Context Synced.` });
+            dashboard.postMessage({ type: "alert", msg: `Nkhosi AI updated with ${currentDept} context.` });
             await fetchAvailability(currentDept);
         }
 
         if (d.type === "saveActivityPrices") {
             await saveLodgeSettings("ActivitiesPrices", d.text, getStaffName());
-            dashboard.postMessage({ type: "alert", msg: "Activity prices updated." });
-            await fetchActivityPrices();
+            dashboard.postMessage({ type: "alert", msg: "Activity prices synced." });
         }
 
         if (d.type === "saveDrivers") {
@@ -140,60 +152,14 @@ $w.onReady(function () {
             dashboard.postMessage({ type: "alert", msg: "Driver contacts synced." });
         }
 
-        if (d.type === "getDriverInfo") {
-            await fetchDriverRates();
-        }
-
-        // --- 4. ORDER FULFILLMENT & NOTIFICATIONS ---
-        if (d.type === "notifyReady") {
-            try {
-                const originalRecord = await wixData.get("PendingRequests", d.id);
-
-                // 1. Mark as Ready and Archive in Database
-                await wixData.update("PendingRequests", {
-                    ...originalRecord,
-                    status: "Ready",
-                    isPrinted: true
-                });
-
-                // 2. CALL THE BACKEND WRAPPER INSTEAD OF DIRECT PUBLISH
-                await publishOrderUpdate(originalRecord.roomNumber, originalRecord.requestType);
-
-                dashboard.postMessage({ type: "alert", msg: "Mission Accomplished. Guest Notified." });
-                await loadOrders(currentDept, currentFilterDate);
-            } catch (err) {
-                console.error("Fulfillment failed:", err);
-            }
-        }
-
-        // Send Email and set Verified Status (Green Badge)
-        if (d.type === "notifyClientReady") {
-            try {
-                const originalRecord = await wixData.get("PendingRequests", d.id);
-                await sendOrderReadyEmail(d.email, originalRecord.details);
-
-                await wixData.update("PendingRequests", {
-                    ...originalRecord,
-                    emailSent: true,
-                    isPrinted: true
-                });
-
-                dashboard.postMessage({ type: "alert", msg: "Client notified via Email." });
-                await loadOrders(currentDept, currentFilterDate);
-            } catch (err) {
-                dashboard.postMessage({ type: "alert", msg: "Notification failed: " + err.message });
-            }
-        }
-
         if (d.type === "refreshKPIs") {
             const kpis = await getAdminKPIs();
             dashboard.postMessage({ type: "loadKPIs", data: kpis });
-            dashboard.postMessage({ type: "alert", msg: "Analytics Refreshed." });
         }
     });
 });
 
-/** --- HELPER FUNCTIONS --- **/
+/** --- LOGIC HELPERS --- **/
 
 async function setupDashboard(user) {
     const formattedUser = formatUser(user);
@@ -212,7 +178,7 @@ async function setupDashboard(user) {
     }
 
     if (refreshInterval) clearInterval(refreshInterval);
-    refreshInterval = setInterval(async () => { await loadOrders(currentDept, currentFilterDate); }, 10000);
+    refreshInterval = setInterval(async () => { await loadOrders(currentDept, currentFilterDate); }, 15000);
 }
 
 function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "Staff") : "Staff"; }
@@ -220,7 +186,6 @@ function getStaffName() { return loggedInStaff ? (loggedInStaff.firstName || "St
 async function loadOrders(department, filterDateStr = null) {
     if (!department) return;
 
-    // Fix: Use baseQuery directly to avoid ".clone is not a function" error
     let baseQuery = wixData.query("PendingRequests").eq("requestType", department);
 
     if (filterDateStr) {
@@ -231,15 +196,13 @@ async function loadOrders(department, filterDateStr = null) {
     }
 
     try {
-        // Fetch PENDING orders
         const activeResults = await baseQuery.eq("isPrinted", false).descending("_createdDate").find();
-
-        // Fetch FULFILLED orders for history log
         const historyResults = await baseQuery.eq("isPrinted", true).descending("_createdDate").limit(10).find();
 
+        // Map to ensure the Dashboard UI sees the guest email correctly
         const mapItems = (items) => items.map(item => ({
             ...item,
-            clientEmail: item.email
+            email: item.clientEmail || item.email // Supports both legacy and new AI fields
         }));
 
         dashboard.postMessage({
