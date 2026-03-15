@@ -7,7 +7,7 @@ import wixRealtime from 'wix-realtime';
 
 let chatHistory = [];
 const SESSION_KEY = "concierge_session";
-const THREE_HOURS = 3 * 60 * 60 * 1000;
+const ONE_HOURS = 1 * 60 * 60 * 1000;
 
 $w.onReady(() => {
     const roomNumber = wixLocation.query.room || "General";
