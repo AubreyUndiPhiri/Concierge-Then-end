@@ -36,6 +36,11 @@ $w.onReady(function () {
     dashboard.onMessage(async (event) => {
         const d = event.data;
 
+        if (d.type === "getStaffList") {
+    const list = await getAllStaff();
+    dashboard.postMessage({ type: "staffListUpdate", payload: list.items || [] });
+}
+
         // --- 2. AUTH & INITIALIZATION ---
         if (d.type === "ready") {
             if (!loggedInStaff) {
