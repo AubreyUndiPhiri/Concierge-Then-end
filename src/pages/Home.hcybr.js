@@ -10,12 +10,31 @@ let chatHistory = [];
 $w.onReady(() => {
     const roomNumber = wixLocation.query.room || "General";
     const chatWidget = $w("#html1"); 
+    const THREE_HOURS = 3*60*60*1000;
 
     // 1. PERSISTENCE: Restore chat history from session storage
     const savedHistory = session.getItem("concierge_history");
     if (savedHistory) {
         chatHistory = JSON.parse(savedHistory);
+        const now = new Date().getTime();
+        // Check if the session is still valid (less than 3 hours old)
+        if (now - sessionData.timestamp < THREE_HOURS) {
+            chatHistory = sessionData.history;
+        } else {
+            // Session expired: Clear history for a fresh start
+            chatHistory = [];
+            session.removeItem("concierge_session");
+        }
     }
+
+    // Helper to update session with a new timestamp whenever a message is sent/received
+    const saveChatSession = (history) => {
+        const sessionData = {
+            timestamp: new Date().getTime(),
+            history: history
+        };
+        session.setItem("concierge_session", JSON.stringify(sessionData));
+    };
 
     // NEW: Helper to clear session data for fresh guest requests
     const resetSession = () => {
